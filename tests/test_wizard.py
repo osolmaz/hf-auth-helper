@@ -4,11 +4,18 @@ import pytest
 
 from hf_auth_helper.wizard import (
     ENTER_MANUALLY,
+    ENV_FILE_CHOICE,
+    MACHINE_LOGIN_CHOICE,
     SetupCancelled,
     ask_env_path,
+    ask_open_browser,
     ask_profile_name,
+    ask_token,
+    ask_use_recommended,
     choose_destination,
     choose_orgs,
+    confirm_replace_profile,
+    customize_selection,
 )
 
 
@@ -23,11 +30,12 @@ class FakeQuestion:
 class FakeBackend:
     """Replays scripted answers and records every prompt."""
 
-    def __init__(self, confirms=(), checkboxes=(), texts=(), selects=()):
+    def __init__(self, confirms=(), checkboxes=(), texts=(), selects=(), passwords=()):
         self.confirms = list(confirms)
         self.checkboxes = list(checkboxes)
         self.texts = list(texts)
         self.selects = list(selects)
+        self.passwords = list(passwords)
         self.seen_choices = []
 
     def confirm(self, message, default=False):
@@ -43,6 +51,9 @@ class FakeBackend:
     def select(self, message, choices):
         self.seen_choices.append(list(choices))
         return FakeQuestion(self.selects.pop(0))
+
+    def password(self, message):
+        return FakeQuestion(self.passwords.pop(0))
 
 
 def test_declining_orgs_returns_nothing():
@@ -96,9 +107,11 @@ def test_no_detected_orgs_goes_straight_to_manual():
 
 
 def test_choose_destination_maps_selections():
-    assert choose_destination(FakeBackend(selects=["Primary hf CLI token"])) == "primary"
-    assert choose_destination(FakeBackend(selects=["Env file (HF_TOKEN=…)"])) == "env"
-    assert choose_destination(FakeBackend(selects=["Named hf CLI profile (x)"])) == "profile"
+    assert choose_destination(FakeBackend(selects=[MACHINE_LOGIN_CHOICE])) == "primary"
+    assert choose_destination(FakeBackend(selects=[ENV_FILE_CHOICE])) == "env"
+    backend = FakeBackend(selects=[MACHINE_LOGIN_CHOICE])
+    choose_destination(backend)
+    assert backend.seen_choices == [[MACHINE_LOGIN_CHOICE, ENV_FILE_CHOICE]]
 
 
 def test_ask_profile_name_falls_back_to_suggestion():
@@ -109,3 +122,41 @@ def test_ask_profile_name_falls_back_to_suggestion():
 def test_ask_env_path_defaults():
     assert ask_env_path(FakeBackend(texts=["service/.env"])) == "service/.env"
     assert ask_env_path(FakeBackend(texts=["  "])) == ".env"
+
+
+def test_ask_use_recommended():
+    assert ask_use_recommended(FakeBackend(confirms=[True])) is True
+    assert ask_use_recommended(FakeBackend(confirms=[False])) is False
+    with pytest.raises(SetupCancelled):
+        ask_use_recommended(FakeBackend(confirms=[None]))
+
+
+def test_customize_selection_collects_accepted_keys():
+    questions = [("gated", "Gated?"), ("billing", "Billing?"), ("collections", "Collections?")]
+    backend = FakeBackend(confirms=[True, False, True])
+    assert customize_selection(backend, questions) == frozenset({"gated", "collections"})
+
+
+def test_customize_selection_cancel_mid_series():
+    with pytest.raises(SetupCancelled):
+        customize_selection(FakeBackend(confirms=[True, None]), [("a", "A?"), ("b", "B?")])
+
+
+def test_ask_open_browser_uses_default_and_answer():
+    assert ask_open_browser(FakeBackend(confirms=[True]), default=False) is True
+    assert ask_open_browser(FakeBackend(confirms=[False]), default=True) is False
+    with pytest.raises(SetupCancelled):
+        ask_open_browser(FakeBackend(confirms=[None]), default=True)
+
+
+def test_confirm_replace_profile():
+    assert confirm_replace_profile(FakeBackend(confirms=[True]), "agent") is True
+    assert confirm_replace_profile(FakeBackend(confirms=[False]), "agent") is False
+    with pytest.raises(SetupCancelled):
+        confirm_replace_profile(FakeBackend(confirms=[None]), "agent")
+
+
+def test_ask_token_strips_and_cancels():
+    assert ask_token(FakeBackend(passwords=["  hf_x  "])) == "hf_x"
+    with pytest.raises(SetupCancelled):
+        ask_token(FakeBackend(passwords=[None]))

@@ -34,6 +34,8 @@ class PromptBackend(Protocol):
 
     def select(self, message: str, choices: Sequence[str]) -> Question: ...
 
+    def password(self, message: str) -> Question: ...
+
 
 def _answer(question: Question) -> object:
     """Return the prompt's answer; questionary yields None on ctrl-c."""
@@ -43,11 +45,53 @@ def _answer(question: Question) -> object:
     return answer
 
 
+def ask_use_recommended(prompts: PromptBackend) -> bool:
+    """Step 1: accept the recommended selection, or customize."""
+    answer = _answer(
+        prompts.confirm("Use the recommended access settings for the agent?", default=True)
+    )
+    return answer is True
+
+
+def customize_selection(
+    prompts: PromptBackend,
+    questions: Sequence[tuple[str, str]],
+) -> frozenset[str]:
+    """Step 3: one yes/no per optional capability; ``(key, question)`` pairs."""
+    enabled = set()
+    for key, question in questions:
+        if _answer(prompts.confirm(question, default=True)) is True:
+            enabled.add(key)
+    return frozenset(enabled)
+
+
+def ask_open_browser(prompts: PromptBackend, default: bool) -> bool:
+    """Ask before ever launching a browser (remote-first)."""
+    answer = _answer(
+        prompts.confirm("Open this page in a browser on this machine?", default=default)
+    )
+    return answer is True
+
+
+def ask_token(prompts: PromptBackend) -> str:
+    """Ask for the pasted token, masking the input with asterisks."""
+    answer = _answer(prompts.password("Paste the new token (shown as asterisks):"))
+    return answer.strip() if isinstance(answer, str) else ""
+
+
+def confirm_replace_profile(prompts: PromptBackend, name: str) -> bool:
+    """Ask before overwriting an existing profile with a different value."""
+    answer = _answer(
+        prompts.confirm(f"Profile '{name}' already exists — replace it?", default=False)
+    )
+    return answer is True
+
+
 def choose_orgs(prompts: PromptBackend, detected: tuple[str, ...]) -> tuple[str, ...]:
     """Ask which organizations the agent token should extend to."""
     wants_orgs = _answer(
         prompts.confirm(
-            "Grant the agent propose-only access to organizations as well?",
+            "Should the agent also have access to your organizations?",
             default=bool(detected),
         )
     )
@@ -81,24 +125,20 @@ def _ask_manual_orgs(prompts: PromptBackend, exclude: list[str]) -> list[str]:
             manual.append(name)
 
 
+MACHINE_LOGIN_CHOICE = "This machine is the agent's — make the token its Hugging Face login"
+ENV_FILE_CHOICE = "I also work here — give the token only to the agent, via an env file"
+
+
 def choose_destination(prompts: PromptBackend) -> str:
-    """Ask where the verified token should be stored."""
+    """Ask how the agent uses this machine; that decides where the token goes."""
     answer = _answer(
         prompts.select(
-            "Where should the token go?",
-            choices=[
-                "Named hf CLI profile (activate with: hf auth switch)",
-                "Primary hf CLI token",
-                "Env file (HF_TOKEN=…)",
-            ],
+            "How will the agent use this machine?",
+            choices=[MACHINE_LOGIN_CHOICE, ENV_FILE_CHOICE],
         )
     )
     text = answer if isinstance(answer, str) else ""
-    if text.startswith("Primary"):
-        return "primary"
-    if text.startswith("Env"):
-        return "env"
-    return "profile"
+    return "env" if text == ENV_FILE_CHOICE else "primary"
 
 
 def ask_profile_name(prompts: PromptBackend, suggested: str) -> str:
@@ -110,7 +150,9 @@ def ask_profile_name(prompts: PromptBackend, suggested: str) -> str:
 
 def ask_env_path(prompts: PromptBackend) -> str:
     """Ask which env file to write HF_TOKEN into."""
-    answer = _answer(prompts.text("Env file path:", default=".env"))
+    answer = _answer(
+        prompts.text("Env file for the agent process (it reads HF_TOKEN from it):", default=".env")
+    )
     path = answer.strip() if isinstance(answer, str) else ""
     return path or ".env"
 

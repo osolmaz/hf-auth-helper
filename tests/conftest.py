@@ -7,6 +7,8 @@ the developer's actual Hugging Face credentials. HF_TOKEN is cleared for
 the same reason.
 """
 
+import os
+
 import pytest
 
 
@@ -17,3 +19,9 @@ def isolate_credential_files(monkeypatch, tmp_path):
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("HF_HOME", str(home / "hf"))
     monkeypatch.delenv("HF_TOKEN", raising=False)
+    # Relative paths (e.g. an env-file answer like "agent.env") must land
+    # in the test sandbox, never in the repository working tree. Skipped
+    # under mutmut, whose runtime resolves source paths against the CWD
+    # (it already runs inside its own sandbox copy).
+    if not os.environ.get("MUTANT_UNDER_TEST"):
+        monkeypatch.chdir(tmp_path)

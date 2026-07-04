@@ -93,7 +93,8 @@ deliberately: the tool's guarantee is "nothing irreversible," not
   write-capable scope is refused. Unknown scopes fail closed.
 - **Cancel means cancel.** Ctrl-c at any prompt aborts the entire setup
   with one line on stderr and exit code 130. Nothing is stored.
-- **The token value is secret everywhere.** It is read with hidden input
+- **The token value is secret everywhere.** It is read with masked input
+  (asterisks interactively, fully hidden non-interactively)
   and is never echoed, logged, embedded in URLs or error messages, or
   written anywhere except the storage destination the user chose. This is
   a testable invariant: no output stream may ever contain the pasted
@@ -140,12 +141,15 @@ concrete scopes; each default is the recommended value (all Yes).
 | # | Question | User scope | Org scope | Default |
 |---|----------|-----------|-----------|---------|
 | 1 | Read gated models it has access to (e.g. Llama)? | `canReadGatedRepos` | — | Yes |
-| 2 | Read your collections? | `collection.read` | `collection.read` | Yes |
-| 3 | See access requests for your gated repos? | `repo.access.read` | `repo.access.read` | Yes |
-| 4 | Read your billing usage? | `user.billing.read` | — | Yes |
-| 5 | Read your notification inbox? | `user.notifications.read` | — | Yes |
-| 6 | Read org settings? *(asked only if orgs selected)* | — | `org.read` | Yes |
-| 7 | See the org's service accounts? *(asked only if orgs selected)* | — | `org.serviceAccounts.read` | Yes |
+| 2 | Read your collections? (helps it find your datasets and models) | `collection.read` | `collection.read` | Yes |
+| 3 | See access requests for your gated repos? (includes requester names/emails) | `repo.access.read` | `repo.access.read` | Yes |
+| 4 | Read your billing usage? (lets it check quota before heavy jobs) | `user.billing.read` | — | Yes |
+| 5 | Read your notification inbox? (lets it notice replies to its pull requests) | `user.notifications.read` | — | Yes |
+| 6 | Read org settings? (basic info about the orgs it works in) *(asked only if orgs selected)* | — | `org.read` | Yes |
+| 7 | See the org's service accounts? (lists the org's automation accounts) *(asked only if orgs selected)* | — | `org.serviceAccounts.read` | Yes |
+
+Each question carries a short parenthetical saying why the capability is
+useful or what it exposes — every prompt must transmit why it matters.
 
 Org-scoped parts of an answer apply only when organizations were selected
 in step 2.
@@ -192,7 +196,7 @@ Before opening the browser, print a short human-readable summary of what
 the token will and will not be able to do, e.g.:
 
 > The token will be able to: read your repos, read collections, open pull
-> requests, read gated models. It cannot write, merge, or delete anything.
+> requests, read gated models. It cannot push commits, merge, change settings, or delete anything.
 
 Then print the prefill URL (`https://huggingface.co/settings/tokens/new`
 with `tokenType=fineGrained` and the selected scopes as query
@@ -208,8 +212,9 @@ The browser is never launched unprompted. After printing the URL, ask
 The default is **No** when remote indicators are present
 (`SSH_CONNECTION`/`SSH_TTY` set, or no display environment), **Yes**
 otherwise. `--no-browser` skips the question and never opens one.
-Whatever the answer, the flow continues to the hidden-input token
-prompt.
+Whatever the answer, the flow continues to the token prompt, which
+masks the pasted value with asterisks (interactive) or hides it fully
+(non-interactive).
 
 ### Step 5 — Verification
 
@@ -245,10 +250,29 @@ step because the role check refuses them first.
 
 ### Step 6 — Storage
 
-Destinations: named `hf` CLI profile (default; suggests the token's
-display name), primary `hf` CLI token, or `HF_TOKEN=` line in an env
-file. Written files are owner-only (mode 600). Semantics follow the
-Storage Model below.
+The question is about usage, not files. If the machine has no Hugging
+Face credentials at all (no active `hf` login *and* no stored token
+profiles), there is nothing to displace and no decision to make: the
+token becomes the machine's login automatically, with a line saying so.
+Otherwise, one select:
+
+> How will the agent use this machine?
+> - This machine is the agent's — make the token its Hugging Face login
+> - I also work here — give the token only to the agent, via an env file
+
+The first choice makes the token the primary `hf` login (the user's
+current login is preserved as a named profile per the Storage Model,
+with a `hf auth switch` hint printed). The second writes an `HF_TOKEN=`
+line into an env file (path asked, default `.env`) and states that the
+user's own login is untouched.
+
+A profile-only destination (register without activating) is not offered
+in the wizard; it remains available via the `--profile NAME` flag. In
+all destinations the registration name defaults to the token's display
+name; for the automatic/primary path a name collision is resolved by
+suffixing rather than prompting, since the name is bookkeeping there,
+not a user choice. Written files are owner-only (mode 600). Semantics
+follow the Storage Model below.
 
 ## Storage Model
 
@@ -273,9 +297,16 @@ Rules:
   register it. Then repoint. Report the adoption to the user (e.g. "Your
   current token wasn't saved under a name — kept it as 'X'.").
 - **Collision policy.** Saving a profile whose name exists with a
-  *different* value: interactive → confirm replacement; non-interactive →
-  refuse with exit 2 (scripts must choose a new name deliberately). Same
-  name with the *same* value is idempotent and silent.
+  *different* value: interactive with an explicit name → confirm
+  replacement; interactive with a bookkeeping name (the primary path's
+  automatic registration) → silently pick a suffixed free name;
+  non-interactive → refuse with exit 2 (scripts must choose a new name
+  deliberately). Same name with the *same* value is idempotent and
+  silent. A confirmed
+  replacement supersedes the *name*, never destroys the *value*: unless
+  the old value is registered under another name, it is first re-registered
+  under a suffixed name and the user is told. A collision refusal must
+  happen before any other mutation (no adoption, no pointer move).
 - **Env files are exports, not registry.** `--env` writes/replaces the
   `HF_TOKEN=` line in the given file and does not participate in the
   registry or the invariant; when an existing line was replaced, the
