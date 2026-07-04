@@ -48,10 +48,38 @@ class TokenReport:
     violations: tuple[ScopeViolation, ...]
     username: str = ""
     token_name: str = ""
+    granted: tuple[tuple[str, tuple[str, ...]], ...] = ()
+    can_read_gated: bool = False
 
     @property
     def is_propose_only(self) -> bool:
         return self.role == FINE_GRAINED_ROLE and not self.violations
+
+
+@dataclass(frozen=True)
+class ScopeDiff:
+    """Differences between what a run configured and what a token holds.
+
+    Extras are informational (they passed the safety gate, so they are
+    safe reads at most); missing entries mean the token is weaker than
+    the run intended and some agent operations will fail.
+    """
+
+    extras: tuple[str, ...]
+    missing_permissions: tuple[str, ...]
+    missing_entities: tuple[str, ...]
+    gated_extra: bool
+    gated_missing: bool
+
+    @property
+    def clean(self) -> bool:
+        return not (
+            self.extras
+            or self.missing_permissions
+            or self.missing_entities
+            or self.gated_extra
+            or self.gated_missing
+        )
 
 
 def evaluate_whoami(payload: Mapping[str, object]) -> TokenReport:
@@ -59,9 +87,10 @@ def evaluate_whoami(payload: Mapping[str, object]) -> TokenReport:
     access_token = _mapping(_mapping(payload.get("auth")).get("accessToken"))
     role = _text(access_token.get("role"))
     fine_grained = _mapping(access_token.get("fineGrained"))
+    pairs = _iter_permissions(fine_grained)
     violations = [
         ScopeViolation(entity=entity, permission=permission)
-        for entity, permission in _iter_permissions(fine_grained)
+        for entity, permission in pairs
         if permission not in SAFE_PERMISSIONS
     ]
     return TokenReport(
@@ -69,7 +98,50 @@ def evaluate_whoami(payload: Mapping[str, object]) -> TokenReport:
         violations=tuple(violations),
         username=_text(payload.get("name")),
         token_name=_text(access_token.get("displayName")),
+        granted=_group_by_entity(pairs),
+        can_read_gated=fine_grained.get("canReadGatedRepos") is True,
     )
+
+
+def diff_scopes(
+    report: TokenReport,
+    expected: Mapping[str, tuple[str, ...]],
+    expected_gated: bool,
+) -> ScopeDiff:
+    """Compare a token's granted scopes against a run's configuration.
+
+    ``expected`` maps entity descriptions (``user:name``, ``org:name``) to
+    the permissions the flow selected for them.
+    """
+    granted = dict(report.granted)
+    extras = tuple(
+        f"{permission} on {entity}"
+        for entity, permissions in report.granted
+        for permission in permissions
+        if permission not in expected.get(entity, ())
+    )
+    missing_entities = tuple(entity for entity in expected if not granted.get(entity))
+    missing_permissions = tuple(
+        f"{permission} on {entity}"
+        for entity, permissions in expected.items()
+        if granted.get(entity)
+        for permission in permissions
+        if permission not in granted[entity]
+    )
+    return ScopeDiff(
+        extras=extras,
+        missing_permissions=missing_permissions,
+        missing_entities=missing_entities,
+        gated_extra=report.can_read_gated and not expected_gated,
+        gated_missing=expected_gated and not report.can_read_gated,
+    )
+
+
+def _group_by_entity(pairs: list[tuple[str, str]]) -> tuple[tuple[str, tuple[str, ...]], ...]:
+    grouped: dict[str, list[str]] = {}
+    for entity, permission in pairs:
+        grouped.setdefault(entity, []).append(permission)
+    return tuple((entity, tuple(permissions)) for entity, permissions in grouped.items())
 
 
 def extract_org_names(payload: Mapping[str, object]) -> tuple[str, ...]:

@@ -11,36 +11,45 @@ but a human has to merge — nothing the agent does is irreversible.
 ## Usage
 
 ```sh
-uvx hf-auth-helper
+uvx hf-auth-helper agent login
 ```
 
 One interactive command:
 
-1. **Organizations** — if you're already logged into the `hf` CLI, your orgs
-   are detected and offered as a checklist; otherwise (or additionally) enter
-   names manually.
-2. **Token form** — your browser opens the Hugging Face token page with the
-   propose-only scopes preselected; you just name the token and click create.
-3. **Verification** — paste the token (input stays hidden) and it is checked
+1. **Recommended or customize** — accept the field-tested access settings,
+   or answer plain-language yes/no questions ("Read gated models?", "Read
+   your billing usage?", …) to narrow them. Reading repo contents and
+   opening pull requests are always included; write access never is.
+2. **Organizations** — if you're already logged into the `hf` CLI, your orgs
+   are detected and offered as a checklist; otherwise enter names manually.
+3. **Token form** — a summary of what the token will be able to do, then the
+   Hugging Face token page URL with your scopes preselected. Open it on any
+   device (the tool assumes you may be SSH'd into a remote box and only
+   opens a local browser if you say yes); name the token and click create.
+4. **Verification** — paste the token (input stays hidden) and it is checked
    against the Hub: if its scopes allow anything beyond reading and opening
-   pull requests, it is **refused** with the violating permissions named, and
-   nothing is stored.
-4. **Storage** — keep it as a named `hf` CLI profile (activate with
-   `hf auth switch`), make it the primary token, or write an `HF_TOKEN=` line
-   into an env file for a single agent process.
+   pull requests, it is **refused** with the violating permissions named,
+   and nothing is stored. Differences from what you configured are reported.
+5. **Storage** — keep it as a named `hf` CLI profile (activate with
+   `hf auth switch`), make it the primary token (your current login is
+   preserved as a named profile, never destroyed), or write an `HF_TOKEN=`
+   line into an env file for a single agent process.
 
-Non-interactive use:
+Scripting (no prompts when not a TTY; flags select resources and
+destinations, never scopes):
 
 ```sh
-uvx hf-auth-helper --org my-org --gated --profile my-agent
-uvx hf-auth-helper --env /path/to/agent/.env
-uvx hf-auth-helper --url-only --org my-org        # just print the prefill URL
+uvx hf-auth-helper agent login --org my-org --profile my-agent
+uvx hf-auth-helper agent login --env /path/to/agent/.env
+uvx hf-auth-helper agent login --url-only        # just print the prefill URL
 ```
 
-The selected scopes are `repo.content.read` (read repo contents) and
-`discussion.write` (open PRs and discussions) — nothing else. A token created
-this way cannot push to main, merge PRs, modify buckets, change settings, or
-delete anything.
+Whatever you select, write capability is limited to opening PRs and
+discussions. A token created this way cannot push to main, merge PRs, modify
+buckets, change settings, or delete anything. What it can still do is *read*
+everything you granted it — see the threat model in
+[docs/SPECIFICATION.md](docs/SPECIFICATION.md) for why "nothing irreversible"
+is the guarantee, not "nothing leaks".
 
 ## Development
 
@@ -57,6 +66,7 @@ uvx slophammer-py@0.4.0 check .
 The interactive prompts use [questionary](https://github.com/tmbo/questionary),
 vendored under `src/hf_auth_helper/vendor` (refresh with
 `python scripts/vendor.py`) so the published package has zero dependencies.
+The full behavior contract lives in [docs/SPECIFICATION.md](docs/SPECIFICATION.md).
 
 ## License
 

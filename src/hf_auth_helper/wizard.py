@@ -43,6 +43,42 @@ def _answer(question: Question) -> object:
     return answer
 
 
+def ask_use_recommended(prompts: PromptBackend) -> bool:
+    """Step 1: accept the recommended selection, or customize."""
+    answer = _answer(
+        prompts.confirm("Use the recommended access settings for the agent?", default=True)
+    )
+    return answer is True
+
+
+def customize_selection(
+    prompts: PromptBackend,
+    questions: Sequence[tuple[str, str]],
+) -> frozenset[str]:
+    """Step 3: one yes/no per optional capability; ``(key, question)`` pairs."""
+    enabled = set()
+    for key, question in questions:
+        if _answer(prompts.confirm(question, default=True)) is True:
+            enabled.add(key)
+    return frozenset(enabled)
+
+
+def ask_open_browser(prompts: PromptBackend, default: bool) -> bool:
+    """Ask before ever launching a browser (remote-first)."""
+    answer = _answer(
+        prompts.confirm("Open this page in a browser on this machine?", default=default)
+    )
+    return answer is True
+
+
+def confirm_replace_profile(prompts: PromptBackend, name: str) -> bool:
+    """Ask before overwriting an existing profile with a different value."""
+    answer = _answer(
+        prompts.confirm(f"Profile '{name}' already exists — replace it?", default=False)
+    )
+    return answer is True
+
+
 def choose_orgs(prompts: PromptBackend, detected: tuple[str, ...]) -> tuple[str, ...]:
     """Ask which organizations the agent token should extend to."""
     wants_orgs = _answer(

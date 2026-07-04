@@ -6,9 +6,13 @@ from hf_auth_helper.wizard import (
     ENTER_MANUALLY,
     SetupCancelled,
     ask_env_path,
+    ask_open_browser,
     ask_profile_name,
+    ask_use_recommended,
     choose_destination,
     choose_orgs,
+    confirm_replace_profile,
+    customize_selection,
 )
 
 
@@ -109,3 +113,35 @@ def test_ask_profile_name_falls_back_to_suggestion():
 def test_ask_env_path_defaults():
     assert ask_env_path(FakeBackend(texts=["service/.env"])) == "service/.env"
     assert ask_env_path(FakeBackend(texts=["  "])) == ".env"
+
+
+def test_ask_use_recommended():
+    assert ask_use_recommended(FakeBackend(confirms=[True])) is True
+    assert ask_use_recommended(FakeBackend(confirms=[False])) is False
+    with pytest.raises(SetupCancelled):
+        ask_use_recommended(FakeBackend(confirms=[None]))
+
+
+def test_customize_selection_collects_accepted_keys():
+    questions = [("gated", "Gated?"), ("billing", "Billing?"), ("collections", "Collections?")]
+    backend = FakeBackend(confirms=[True, False, True])
+    assert customize_selection(backend, questions) == frozenset({"gated", "collections"})
+
+
+def test_customize_selection_cancel_mid_series():
+    with pytest.raises(SetupCancelled):
+        customize_selection(FakeBackend(confirms=[True, None]), [("a", "A?"), ("b", "B?")])
+
+
+def test_ask_open_browser_uses_default_and_answer():
+    assert ask_open_browser(FakeBackend(confirms=[True]), default=False) is True
+    assert ask_open_browser(FakeBackend(confirms=[False]), default=True) is False
+    with pytest.raises(SetupCancelled):
+        ask_open_browser(FakeBackend(confirms=[None]), default=True)
+
+
+def test_confirm_replace_profile():
+    assert confirm_replace_profile(FakeBackend(confirms=[True]), "agent") is True
+    assert confirm_replace_profile(FakeBackend(confirms=[False]), "agent") is False
+    with pytest.raises(SetupCancelled):
+        confirm_replace_profile(FakeBackend(confirms=[None]), "agent")
