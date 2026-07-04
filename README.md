@@ -36,6 +36,32 @@ threat model in the spec.
 uvx hf-auth-helper agent login
 ```
 
+Demo:
+
+```text
+$ uvx hf-auth-helper agent login
+Installed 1 package in 9ms
+Setting up a token your agent can't do damage with: it will be able
+to read and open pull requests for your review. It cannot push
+commits, merge, change settings, or delete anything.
+
+? Use the recommended access settings for the agent? Yes
+? Should the agent also have access to your organizations? No
+The token will be able to: read repository contents, open pull requests and discussions, read gated models, read collections, see gated-repo access requests, read billing usage, read notifications. It cannot push commits, merge, change settings, or delete anything.
+
+Create the token on this page — the right boxes are already ticked,
+so you only need to name the token and click 'Create token':
+
+  https://huggingface.co/settings/tokens/new?ownUserPermissions=repo.content.read&ownUserPermissions=repo.access.read&ownUserPermissions=collection.read&ownUserPermissions=discussion.write&ownUserPermissions=user.billing.read&ownUserPermissions=user.notifications.read&canReadGatedRepos=true&tokenType=fineGrained
+
+? Open this page in a browser on this machine? No
+? Paste the new token (shown as asterisks): *************************************
+Verified: token 'osolmaz-hf-direct-access-bob' on account 'osolmaz' is propose-only —
+the Hub confirms it cannot push commits, merge, change settings, or delete anything.
+? How will the agent use this machine? a) This machine is the agent's — make the token its Hugging Face login
+Done. This machine's Hugging Face login is now the agent token (saved as profile 'osolmaz-hf-direct-access-bob').
+```
+
 One interactive command:
 
 1. **Recommended or customize** — accept the field-tested access settings,
