@@ -40,7 +40,7 @@ Demo:
 
 ```text
 $ uvx hf-auth-helper agent login
-Installed 1 package in 9ms
+
 Setting up a token your agent can't do damage with: it will be able
 to read and open pull requests for your review. It cannot push
 commits, merge, change settings, or delete anything.
