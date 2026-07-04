@@ -83,7 +83,7 @@ def choose_orgs(prompts: PromptBackend, detected: tuple[str, ...]) -> tuple[str,
     """Ask which organizations the agent token should extend to."""
     wants_orgs = _answer(
         prompts.confirm(
-            "Grant the agent propose-only access to organizations as well?",
+            "Should the agent also have access to your organizations?",
             default=bool(detected),
         )
     )
