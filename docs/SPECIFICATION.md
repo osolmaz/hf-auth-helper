@@ -13,6 +13,27 @@ delete anything. The tool composes the token-form prefill URL, verifies
 the pasted token against the Hub, and stores it — refusing any token whose
 scopes exceed propose-only.
 
+## Command Structure
+
+The flow in this document is triggered by:
+
+```sh
+uvx hf-auth-helper agent login
+```
+
+- `agent` is a command namespace: tokens with agent scopes. `login`
+  creates, verifies, and stores one — mirroring `hf auth login`, but for
+  an agent identity.
+- Bare `hf-auth-helper` and bare `hf-auth-helper agent` print help listing
+  the available (sub)commands; neither launches a flow.
+- Scripting flags hang off the subcommand:
+  `hf-auth-helper agent login --env .env`,
+  `hf-auth-helper agent login --url-only`.
+- Reserved for later (not in scope for this spec): `agent verify`
+  (re-classify an existing token without storing), `agent logout` (remove
+  a stored profile/env entry), `agent list` (show stored agent profiles).
+  If the concept is ever upstreamed, the native shape is `hf agent login`.
+
 ## Principles
 
 - **One recommended profile.** There is a single blessed scope selection
@@ -121,15 +142,15 @@ files are owner-only (mode 600).
 
 ## Non-Interactive Behavior
 
-When stdin or stdout is not a TTY, no prompts run and the recommended
-selection is used. Existing flags remain for scripting only — they select
-resources and destinations, never scopes:
+When stdin or stdout is not a TTY, `agent login` runs without prompts and
+the recommended selection is used. Existing flags remain for scripting
+only — they select resources and destinations, never scopes:
 
 - `--org NAME` (repeatable), `--profile NAME` / `--primary` / `--env PATH`,
   `--url-only [--json]`, `--no-browser`.
 
-`--url-only` prints the recommended-selection URL (with any `--org`
-values) and exits.
+`hf-auth-helper agent login --url-only` prints the recommended-selection
+URL (with any `--org` values) and exits.
 
 ## Exit Codes
 
