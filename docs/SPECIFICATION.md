@@ -1,8 +1,7 @@
 # hf-auth-helper — Interactive Flow Specification
 
-Status: agreed design, 2026-07-04. Supersedes the earlier preset-based
-(`standard` / `minimal`) design; there are no named presets and no
-scope-selection flags.
+Status: agreed design, 2026-07-04. The interactive flow exposes one
+recommended path plus customization, with no scope-selection flags.
 
 ## Purpose
 
@@ -86,11 +85,11 @@ deliberately: the tool's guarantee is "nothing irreversible," not
   `discussion.write` (read repo contents, open PRs/discussions) is the
   identity of the tool and is always included. Declining every optional
   question yields exactly this pair.
-- **Presets are UX, verification is policy.** The verifier's
-  `SAFE_PERMISSIONS` deny-list is the security boundary and is independent
-  of what the flow selected. Any token whose scopes are all safe passes,
-  even if broader than what this run configured; any unknown or
-  write-capable scope is refused. Unknown scopes fail closed.
+- **Verification is policy.** The verifier's `SAFE_PERMISSIONS` deny-list
+  is the security boundary and is independent of what the flow selected.
+  Any token whose scopes are all safe passes, even if broader than what
+  this run configured; any unknown or write-capable scope is refused.
+  Unknown scopes fail closed.
 - **Cancel means cancel.** Ctrl-c at any prompt aborts the entire setup
   with one line on stderr and exit code 130. Nothing is stored.
 - **The token value is secret everywhere.** It is read with masked input
@@ -116,8 +115,6 @@ questionary through the `PromptBackend` protocol.
 - **No**: the customize series in step 3 runs.
 
 ### Step 2 — Organizations
-
-Unchanged from the current implementation:
 
 - If an existing Hub credential is found (`HF_TOKEN`, then the `hf` CLI
   token file), the account's organizations are fetched from `whoami-v2`
@@ -322,8 +319,7 @@ When stdin or stdout is not a TTY, `agent login` runs without prompts and
 the recommended selection is used; the browser is never opened. With no
 destination flag, the token is stored as a named profile under its
 display name; on a collision with a different value, refuse with exit 2.
-Existing flags remain for scripting only — they select resources and
-destinations, never scopes:
+Supported scripting flags select resources and destinations, never scopes:
 
 - `--org NAME` (repeatable), `--profile NAME` / `--primary` / `--env PATH`,
   `--url-only [--json]`, `--no-browser`.
@@ -347,6 +343,6 @@ URL (with any `--org` values) and exits.
   table row.
 - The recommended selection is the table with every default applied — it
   is not a separately maintained list.
-- The Storage Model section resolves the previously tracked multi-token
-  gaps (silent profile overwrite, primary clobbering, unregistered
-  primary); they are in scope for implementation.
+- The Storage Model section defines behavior for profile replacement,
+  primary-token updates, and unregistered primary tokens; they are in
+  scope for implementation.
