@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "hf-auth-helper"
-version = "0.1.0"
+version = "0.1.1"
 description = "Set up safe, scoped Hugging Face authentication for agents: propose-only tokens, verification, and profiles."
 readme = "README.md"
 license = "MIT"
