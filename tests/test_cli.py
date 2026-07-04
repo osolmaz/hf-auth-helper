@@ -1,6 +1,7 @@
 """Tests for the CLI entry point."""
 
 import json
+import os
 
 import pytest
 
@@ -121,7 +122,7 @@ def test_wizard_destination_asked_when_login_exists(
     backend = FakeBackend(
         confirms=[True, False],  # recommended; no orgs
         selects=[ENV_FILE_CHOICE],
-        texts=["agent.env"],
+        texts=[str(tmp_path / "agent.env")],
         passwords=["hf_secret"],
     )
     monkeypatch.setattr("hf_auth_helper.cli._prompt_backend", lambda: backend)
@@ -441,3 +442,31 @@ def test_destination_asked_when_profiles_exist_without_pointer(
     out = capsys.readouterr().out
     assert "No Hugging Face credentials" not in out
     assert backend.selects == []  # the select was consumed
+
+
+@pytest.mark.skipif(
+    bool(os.environ.get("MUTANT_UNDER_TEST")),
+    reason="explicit chdir conflicts with the mutmut runtime",
+)
+def test_relative_env_answer_cannot_touch_the_repo(
+    monkeypatch, tmp_path, capsys, pasted_token, quiet_browser
+):
+    """A relative env-path answer lands in the CWD sandbox, not the repo.
+
+    Regression: a test once answered 'agent.env' and the file was written
+    into (and committed from) the repository root.
+    """
+    monkeypatch.chdir(tmp_path)
+    hf_home().mkdir(parents=True, exist_ok=True)
+    (hf_home() / "token").write_text("hf_existing_login\n")
+    monkeypatch.setattr("hf_auth_helper.cli._display_name_of", lambda token: "my-login")
+    backend = FakeBackend(
+        confirms=[True, False],
+        selects=[ENV_FILE_CHOICE],
+        texts=["agent.env"],
+        passwords=["hf_secret"],
+    )
+    monkeypatch.setattr("hf_auth_helper.cli._prompt_backend", lambda: backend)
+    monkeypatch.setattr("hf_auth_helper.cli._discover_orgs", lambda: ())
+    assert main(LOGIN) == 0
+    assert (tmp_path / "agent.env").read_text() == "HF_TOKEN=hf_secret\n"
