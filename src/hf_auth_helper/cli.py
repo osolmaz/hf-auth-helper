@@ -86,8 +86,8 @@ def main(argv: list[str] | None = None) -> int:
 def _run_login(args: argparse.Namespace) -> int:
     print(
         "Setting up a token your agent can't do damage with: it will be able\n"
-        "to read and open pull requests for your review — never merge,\n"
-        "overwrite, or delete.\n"
+        "to read and open pull requests for your review. It cannot push\n"
+        "commits, merge, change settings, or delete anything.\n"
     )
     prompts = _prompt_backend()
     selection, orgs = _configure(args, prompts)
@@ -134,7 +134,7 @@ def _receive_and_store(
         return EXIT_REFUSED
     print(
         f"Verified: token '{report.token_name}' on account '{report.username}' is propose-only —\n"
-        "the Hub confirms it can suggest changes but never merge, overwrite, or delete."
+        "the Hub confirms it cannot push commits, merge, change settings, or delete anything."
     )
     _report_mismatch(report, selection, orgs)
     try:
