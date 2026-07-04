@@ -8,6 +8,28 @@ can delete your datasets, Spaces, and buckets. `hf-auth-helper` sets up
 **propose-only** access instead: the agent can read and open pull requests,
 but a human has to merge — nothing the agent does is irreversible.
 
+What the agent **can** do with a token set up this way:
+
+- Read the models, datasets, Spaces, and buckets in its scope (plus whatever
+  optional reads you grant: collections, gated models, …).
+- Propose changes to any git-based repo — models, datasets, Spaces — as pull
+  requests with real commits, ready for your review.
+- Open and comment on discussions, and manage its own pull requests.
+
+What it **cannot** do, no matter how it is prompted:
+
+- Merge pull requests (even its own), push to branches, or change any
+  repository settings.
+- Write to buckets at all: buckets have no pull-request mechanism and no
+  version history, so any write would be unreviewable and unrecoverable —
+  bucket write access is never part of any selection. Buckets stay
+  read-only for the agent.
+- Delete or overwrite anything, anywhere.
+
+The trade-off to know about: the token can still *read* everything you scope
+it to, so exfiltration of readable data remains your residual risk — see the
+threat model in the spec.
+
 ## Usage
 
 ```sh
