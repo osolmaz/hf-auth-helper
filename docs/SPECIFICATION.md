@@ -118,6 +118,11 @@ Unchanged from the current implementation:
   empty to finish, duplicates skipped.
 - Declining the org question scopes the token to the personal namespace
   only.
+- An explicit `--org` flag skips this step entirely (the answer was given
+  on the command line); steps 1 and 3 still run.
+- Platform constraint: the token form accepts a single `orgPermissions`
+  block applied to *all* selected organizations — per-org scope
+  customization is not possible and must not be attempted.
 
 ### Step 3 — Customize series (only if step 1 = No)
 
@@ -199,9 +204,45 @@ token with hidden input.
 
 ### Step 6 — Storage
 
-Unchanged: named `hf` CLI profile (default; suggests the token's display
-name), primary `hf` CLI token, or `HF_TOKEN=` line in an env file. Written
-files are owner-only (mode 600).
+Destinations: named `hf` CLI profile (default; suggests the token's
+display name), primary `hf` CLI token, or `HF_TOKEN=` line in an env
+file. Written files are owner-only (mode 600). Semantics follow the
+Storage Model below.
+
+## Storage Model
+
+The `hf` CLI's storage is a registry: `stored_tokens` holds named
+credentials, and the `token` file is a pointer selecting the active one.
+This tool maintains that model under one invariant:
+
+> Every token value that passes through the tool has a name in the
+> registry, and no credential value is ever destroyed — only superseded
+> by name.
+
+Rules:
+
+- **Primary is not a separate destination.** Saving as primary means:
+  register the token as a named profile in `stored_tokens`, then point
+  the active-token file at it. There is no code path that writes the
+  pointer without the registry entry.
+- **Adoption before eviction.** Before repointing the active token, if
+  the current token-file value is not registered under any name in
+  `stored_tokens`, adopt it first: recover its display name via
+  `whoami-v2`, falling back to `previous-<date>` if the lookup fails, and
+  register it. Then repoint. Report the adoption to the user (e.g. "Your
+  current token wasn't saved under a name — kept it as 'X'.").
+- **Collision policy.** Saving a profile whose name exists with a
+  *different* value: interactive → confirm replacement; non-interactive →
+  refuse with exit 2 (scripts must choose a new name deliberately). Same
+  name with the *same* value is idempotent and silent.
+- **Env files are exports, not registry.** `--env` writes/replaces the
+  `HF_TOKEN=` line in the given file and does not participate in the
+  registry or the invariant; when an existing line was replaced, the
+  message says so.
+
+A testable property follows from the invariant: after any sequence of
+tool operations, the set of token values stored on disk never shrinks
+(except by an explicit future `agent logout`).
 
 ## Non-Interactive Behavior
 
@@ -221,7 +262,7 @@ URL (with any `--org` values) and exits.
 |------|---------|
 | 0 | Token verified and stored (or URL printed) |
 | 1 | Token refused: not propose-only |
-| 2 | Error: empty paste, network failure, Hub rejection |
+| 2 | Error: empty paste, network failure, Hub rejection, non-interactive profile collision |
 | 130 | Cancelled by user |
 
 ## Implementation Notes
@@ -231,7 +272,6 @@ URL (with any `--org` values) and exits.
   table row.
 - The recommended selection is the table with every default applied — it
   is not a separately maintained list.
-- Known open issues tracked outside this spec: multi-token storage gaps
-  (silent same-name profile overwrite; `--primary` clobbers the existing
-  token file without preserving it and without registering the new token
-  in `stored_tokens`).
+- The Storage Model section resolves the previously tracked multi-token
+  gaps (silent profile overwrite, primary clobbering, unregistered
+  primary); they are in scope for implementation.
