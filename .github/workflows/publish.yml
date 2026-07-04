@@ -1,9 +1,8 @@
 name: Publish
 
 on:
-  push:
-    tags:
-      - "v*"
+  release:
+    types: [published]
 
 concurrency:
   group: publish-${{ github.workflow }}-${{ github.ref }}
@@ -17,12 +16,12 @@ jobs:
     # PyPI trusted publishing requires a GitHub-hosted runner.
     runs-on: ubuntu-latest
     permissions:
-      contents: write
       id-token: write
     steps:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
+          ref: ${{ github.event.release.tag_name }}
 
       - uses: astral-sh/setup-uv@v7
 
@@ -32,8 +31,7 @@ jobs:
 
       - name: Validate release tag
         env:
-          RELEASE_SHA: ${{ github.sha }}
-          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
           set -euo pipefail
           git fetch --no-tags origin main --depth=1
@@ -46,7 +44,6 @@ jobs:
           import tomllib
 
           release_tag = os.environ.get("RELEASE_TAG", "")
-          release_sha = os.environ.get("RELEASE_SHA", "")
 
           if not re.fullmatch(r"v\d+\.\d+\.\d+", release_tag):
               sys.exit(f"Release tags must match vX.Y.Z; received {release_tag or '<missing>'}.")
@@ -60,12 +57,16 @@ jobs:
                   f"expected {expected}."
               )
 
+          tag_commit = subprocess.check_output(
+              ["git", "rev-list", "-n", "1", release_tag],
+              text=True,
+          ).strip()
           ancestor = subprocess.run(
-              ["git", "merge-base", "--is-ancestor", release_sha, "origin/main"],
+              ["git", "merge-base", "--is-ancestor", tag_commit, "origin/main"],
               check=False,
           )
           if ancestor.returncode != 0:
-              sys.exit(f"Tagged commit {release_sha} is not contained in origin/main.")
+              sys.exit(f"Tagged commit {tag_commit} is not contained in origin/main.")
 
           print(f"Release tag {release_tag} matches pyproject.toml and points to origin/main.")
           PY
@@ -101,39 +102,3 @@ jobs:
 
       - name: Publish to PyPI
         run: uv publish --trusted-publishing always
-
-      - name: Create GitHub Release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-
-          tag="${GITHUB_REF_NAME}"
-          version="${tag#v}"
-          notes_file="$(mktemp)"
-
-          cat > "$notes_file" <<EOF
-          Published hf-auth-helper to PyPI.
-
-          Install with:
-
-          \`\`\`sh
-          uvx hf-auth-helper==$version agent login
-          \`\`\`
-
-          Package: https://pypi.org/project/hf-auth-helper/$version/
-          EOF
-
-          if gh release view "$tag" >/dev/null 2>&1; then
-            gh release edit "$tag" \
-              --title "hf-auth-helper v$version" \
-              --notes-file "$notes_file" \
-              --draft=false \
-              --prerelease=false \
-              --verify-tag
-          else
-            gh release create "$tag" \
-              --title "hf-auth-helper v$version" \
-              --notes-file "$notes_file" \
-              --verify-tag
-          fi
