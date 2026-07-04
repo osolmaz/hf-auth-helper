@@ -1,0 +1,139 @@
+name: Publish
+
+on:
+  push:
+    tags:
+      - "v*"
+
+concurrency:
+  group: publish-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    # PyPI trusted publishing requires a GitHub-hosted runner.
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: astral-sh/setup-uv@v7
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Validate release tag
+        env:
+          RELEASE_SHA: ${{ github.sha }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin main --depth=1
+
+          uv run --python 3.12 python - <<'PY'
+          import os
+          import re
+          import subprocess
+          import sys
+          import tomllib
+
+          release_tag = os.environ.get("RELEASE_TAG", "")
+          release_sha = os.environ.get("RELEASE_SHA", "")
+
+          if not re.fullmatch(r"v\d+\.\d+\.\d+", release_tag):
+              sys.exit(f"Release tags must match vX.Y.Z; received {release_tag or '<missing>'}.")
+
+          with open("pyproject.toml", "rb") as handle:
+              version = tomllib.load(handle)["project"]["version"]
+          expected = f"v{version}"
+          if release_tag != expected:
+              sys.exit(
+                  f"Release tag {release_tag} does not match pyproject version {version}; "
+                  f"expected {expected}."
+              )
+
+          ancestor = subprocess.run(
+              ["git", "merge-base", "--is-ancestor", release_sha, "origin/main"],
+              check=False,
+          )
+          if ancestor.returncode != 0:
+              sys.exit(f"Tagged commit {release_sha} is not contained in origin/main.")
+
+          print(f"Release tag {release_tag} matches pyproject.toml and points to origin/main.")
+          PY
+
+      - name: Ensure version is not already published
+        run: |
+          set -euo pipefail
+          version="$(uv run --python 3.12 python -c 'import tomllib; print(tomllib.load(open("pyproject.toml","rb"))["project"]["version"])')"
+          status="$(curl -s -o /dev/null -w '%{http_code}' "https://pypi.org/pypi/hf-auth-helper/$version/json")"
+          if [ "$status" = "200" ]; then
+            echo "hf-auth-helper@$version is already published on PyPI."
+            exit 1
+          fi
+          echo "Publishing hf-auth-helper@$version"
+
+      - name: Validate package
+        run: |
+          uv run --python 3.12 --extra dev ruff format --check .
+          uv run --python 3.12 --extra dev ruff check .
+          uv run --python 3.12 --extra dev ty check src tests
+          uv run --python 3.12 --extra dev pytest --cov=src/hf_auth_helper --cov-fail-under=85
+          uv run --python 3.12 --extra dev python scripts/check-mutation.py --min-kill-rate 80
+          uv export --python 3.12 --extra dev --format requirements.txt --no-emit-project --no-hashes --output-file /tmp/requirements.txt
+          uvx pip-audit -r /tmp/requirements.txt --disable-pip --no-deps
+          uvx slophammer-py@0.4.0 dry .
+          uvx slophammer-py@0.4.0 check .
+
+      - name: Build distributions
+        run: uv build
+
+      - name: Check distributions
+        run: uvx twine check dist/*
+
+      - name: Publish to PyPI
+        run: uv publish --trusted-publishing always
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          tag="${GITHUB_REF_NAME}"
+          version="${tag#v}"
+          notes_file="$(mktemp)"
+
+          cat > "$notes_file" <<EOF
+          Published hf-auth-helper to PyPI.
+
+          Install with:
+
+          \`\`\`sh
+          uvx hf-auth-helper==$version agent login
+          \`\`\`
+
+          Package: https://pypi.org/project/hf-auth-helper/$version/
+          EOF
+
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release edit "$tag" \
+              --title "hf-auth-helper v$version" \
+              --notes-file "$notes_file" \
+              --draft=false \
+              --prerelease=false \
+              --verify-tag
+          else
+            gh release create "$tag" \
+              --title "hf-auth-helper v$version" \
+              --notes-file "$notes_file" \
+              --verify-tag
+          fi
