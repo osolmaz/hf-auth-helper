@@ -192,7 +192,7 @@ Before opening the browser, print a short human-readable summary of what
 the token will and will not be able to do, e.g.:
 
 > The token will be able to: read your repos, read collections, open pull
-> requests, read gated models. It cannot write, merge, or delete anything.
+> requests, read gated models. It cannot push commits, merge, change settings, or delete anything.
 
 Then print the prefill URL (`https://huggingface.co/settings/tokens/new`
 with `tokenType=fineGrained` and the selected scopes as query

@@ -177,6 +177,23 @@ def test_primary_adopts_unnamed_active_token(monkeypatch, capsys, pasted_token, 
     assert (hf_home() / "token").read_text() == "hf_secret\n"
 
 
+def test_primary_rotation_with_same_display_name(monkeypatch, capsys, pasted_token, quiet_browser):
+    """Rotating a primary whose display name equals the new token's name.
+
+    Regression: adoption used to claim the name the new token needed,
+    refusing non-interactively or overwriting the just-adopted value.
+    """
+    hf_home().mkdir(parents=True, exist_ok=True)
+    (hf_home() / "token").write_text("hf_old_login\n")
+    monkeypatch.setattr("hf_auth_helper.cli._display_name_of", lambda token: "agent-token")
+    assert main([*LOGIN, "--primary"]) == 0
+    out = capsys.readouterr().out
+    assert "kept it as 'agent-token-2'" in out
+    profiles = read_profiles()
+    assert profiles == {"agent-token-2": "hf_old_login", "agent-token": "hf_secret"}
+    assert (hf_home() / "token").read_text() == "hf_secret\n"
+
+
 def test_primary_does_not_adopt_registered_token(monkeypatch, capsys, pasted_token, quiet_browser):
     hf_home().mkdir(parents=True, exist_ok=True)
     (hf_home() / "token").write_text("hf_old_login\n")

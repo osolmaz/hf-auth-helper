@@ -66,13 +66,17 @@ def find_profile_name(token: str, stored_tokens_path: Path | None = None) -> str
     return None
 
 
-def unique_profile_name(base: str, stored_tokens_path: Path | None = None) -> str:
-    """``base``, or ``base-2``/``base-3``/… if taken by other values."""
-    profiles = read_profiles(stored_tokens_path)
-    if base not in profiles:
+def unique_profile_name(
+    base: str,
+    stored_tokens_path: Path | None = None,
+    avoid: tuple[str, ...] = (),
+) -> str:
+    """``base``, or ``base-2``/``base-3``/… if taken or in ``avoid``."""
+    unavailable = set(read_profiles(stored_tokens_path)) | set(avoid)
+    if base not in unavailable:
         return base
     suffix = 2
-    while f"{base}-{suffix}" in profiles:
+    while f"{base}-{suffix}" in unavailable:
         suffix += 1
     return f"{base}-{suffix}"
 

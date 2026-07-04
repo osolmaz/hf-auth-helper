@@ -238,10 +238,15 @@ def _store_primary(
     token: str,
     report: TokenReport,
 ) -> None:
-    adopted = _adopt_active_token(token)
-    if adopted:
-        print(f"Your current token wasn't saved under a name — kept it as '{adopted}'.")
-    name = _register(args.profile, prompts, token, report, save_primary)
+    def adopt_then_save_primary(token_value: str, name: str, *, replace: bool = False) -> Path:
+        # Adoption must know the final profile name so it never claims the
+        # name the new token is about to take (same-name token rotation).
+        adopted = _adopt_active_token(token_value, avoid=name)
+        if adopted:
+            print(f"Your current token wasn't saved under a name — kept it as '{adopted}'.")
+        return save_primary(token_value, name, replace=replace)
+
+    name = _register(args.profile, prompts, token, report, adopt_then_save_primary)
     print(f"Saved as profile '{name}' and made it the primary hf token.")
 
 
@@ -280,11 +285,12 @@ def _register(
             name = ask_profile_name(prompts, unique_profile_name(name))
 
 
-def _adopt_active_token(new_token: str) -> str | None:
+def _adopt_active_token(new_token: str, avoid: str) -> str | None:
     current = read_active_token()
     if not current or current == new_token or find_profile_name(current):
         return None
-    name = unique_profile_name(_display_name_of(current) or _fallback_adopt_name())
+    base = _display_name_of(current) or _fallback_adopt_name()
+    name = unique_profile_name(base, avoid=(avoid,))
     save_profile(current, name)
     return name
 

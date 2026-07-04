@@ -103,7 +103,7 @@ def test_summary_mentions_core_and_selected_capabilities():
     assert "open pull requests" in text
     assert "read gated models" in text
     assert "read billing usage" not in text
-    assert text.endswith("It cannot write, merge, or delete anything.")
+    assert text.endswith("It cannot push commits, merge, change settings, or delete anything.")
 
 
 def test_summary_skips_org_capabilities_without_orgs():

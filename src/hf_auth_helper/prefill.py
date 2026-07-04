@@ -152,7 +152,7 @@ def summarize(orgs: tuple[str, ...], selection: frozenset[str]) -> str:
     where = f" across your account and {', '.join(orgs)}" if orgs else ""
     return (
         f"The token will be able to{where}: {', '.join(phrases)}. "
-        "It cannot write, merge, or delete anything."
+        "It cannot push commits, merge, change settings, or delete anything."
     )
 
 
