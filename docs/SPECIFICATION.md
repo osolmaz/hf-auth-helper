@@ -275,7 +275,11 @@ Rules:
 - **Collision policy.** Saving a profile whose name exists with a
   *different* value: interactive → confirm replacement; non-interactive →
   refuse with exit 2 (scripts must choose a new name deliberately). Same
-  name with the *same* value is idempotent and silent.
+  name with the *same* value is idempotent and silent. A confirmed
+  replacement supersedes the *name*, never destroys the *value*: unless
+  the old value is registered under another name, it is first re-registered
+  under a suffixed name and the user is told. A collision refusal must
+  happen before any other mutation (no adoption, no pointer move).
 - **Env files are exports, not registry.** `--env` writes/replaces the
   `HF_TOKEN=` line in the given file and does not participate in the
   registry or the invariant; when an existing line was replaced, the

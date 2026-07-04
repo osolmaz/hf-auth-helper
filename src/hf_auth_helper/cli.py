@@ -35,6 +35,7 @@ from hf_auth_helper.store import (
     find_profile_name,
     hf_home,
     read_active_token,
+    read_profiles,
     save_env,
     save_primary,
     save_profile,
@@ -239,12 +240,15 @@ def _store_primary(
     report: TokenReport,
 ) -> None:
     def adopt_then_save_primary(token: str, name: str, *, replace: bool = False) -> Path:
-        # Adoption must know the final profile name so it never claims the
-        # name the new token is about to take (same-name token rotation).
+        # Register first: a collision must abort before anything mutates.
+        # Adoption then runs while the pointer still holds the old token,
+        # and must know the final profile name so it never claims the name
+        # the new token just took (same-name token rotation).
+        save_profile(token, name, replace=replace)
         adopted = _adopt_active_token(token, avoid=name)
         if adopted:
             print(f"Your current token wasn't saved under a name — kept it as '{adopted}'.")
-        return save_primary(token, name, replace=replace)
+        return save_primary(token, name, replace=True)
 
     name = _register(args.profile, prompts, token, report, adopt_then_save_primary)
     print(f"Saved as profile '{name}' and made it the primary hf token.")
@@ -280,9 +284,30 @@ def _register(
                     f"Profile '{name}' already exists with a different token."
                 ) from None
             if confirm_replace_profile(prompts, name):
+                backup = _preserve_replaced_value(name)
+                if backup:
+                    print(f"The previous token under '{name}' was kept as '{backup}'.")
                 save(token, name, replace=True)
                 return name
             name = ask_profile_name(prompts, unique_profile_name(name))
+
+
+def _preserve_replaced_value(name: str) -> str | None:
+    """Re-register a profile's current value before it is replaced.
+
+    Keeps the storage invariant: replacement supersedes a *name*, never
+    destroys a *value*. No-op when the value is also registered under
+    another name.
+    """
+    profiles = read_profiles()
+    old_value = profiles.get(name)
+    if not old_value:
+        return None
+    if any(value == old_value for other, value in profiles.items() if other != name):
+        return None
+    backup = unique_profile_name(name)
+    save_profile(old_value, backup)
+    return backup
 
 
 def _adopt_active_token(new_token: str, avoid: str) -> str | None:

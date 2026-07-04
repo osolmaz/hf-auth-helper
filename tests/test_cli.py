@@ -136,7 +136,9 @@ def test_org_flag_skips_org_prompt(monkeypatch, capsys, pasted_token, quiet_brow
     assert backend.checkboxes == []
 
 
-def test_interactive_collision_confirm_replaces(monkeypatch, capsys, pasted_token, quiet_browser):
+def test_interactive_collision_confirm_replaces_and_preserves(
+    monkeypatch, capsys, pasted_token, quiet_browser
+):
     save_profile("hf_old", "agent-token")
     backend = FakeBackend(
         confirms=[True, False, True],  # recommended; no orgs; replace profile
@@ -146,7 +148,24 @@ def test_interactive_collision_confirm_replaces(monkeypatch, capsys, pasted_toke
     monkeypatch.setattr("hf_auth_helper.cli._prompt_backend", lambda: backend)
     monkeypatch.setattr("hf_auth_helper.cli._discover_orgs", lambda: ())
     assert main(LOGIN) == 0
-    assert read_profiles() == {"agent-token": "hf_secret"}
+    assert "kept as 'agent-token-2'" in capsys.readouterr().out
+    assert read_profiles() == {"agent-token": "hf_secret", "agent-token-2": "hf_old"}
+
+
+def test_interactive_replace_skips_backup_when_value_registered_elsewhere(
+    monkeypatch, capsys, pasted_token, quiet_browser
+):
+    save_profile("hf_old", "agent-token")
+    save_profile("hf_old", "other-name")
+    backend = FakeBackend(
+        confirms=[True, False, True],
+        texts=["agent-token"],
+        selects=["Named hf CLI profile (activate with: hf auth switch)"],
+    )
+    monkeypatch.setattr("hf_auth_helper.cli._prompt_backend", lambda: backend)
+    monkeypatch.setattr("hf_auth_helper.cli._discover_orgs", lambda: ())
+    assert main(LOGIN) == 0
+    assert read_profiles() == {"agent-token": "hf_secret", "other-name": "hf_old"}
 
 
 def test_interactive_collision_decline_asks_new_name(
@@ -192,6 +211,20 @@ def test_primary_rotation_with_same_display_name(monkeypatch, capsys, pasted_tok
     profiles = read_profiles()
     assert profiles == {"agent-token-2": "hf_old_login", "agent-token": "hf_secret"}
     assert (hf_home() / "token").read_text() == "hf_secret\n"
+
+
+def test_primary_collision_refuses_before_any_mutation(
+    monkeypatch, capsys, pasted_token, quiet_browser
+):
+    """Non-interactive --primary collision must not adopt or move anything."""
+    hf_home().mkdir(parents=True, exist_ok=True)
+    (hf_home() / "token").write_text("hf_old_login\n")
+    save_profile("hf_other", "agent-token")
+    monkeypatch.setattr("hf_auth_helper.cli._display_name_of", lambda token: "old-login")
+    assert main([*LOGIN, "--primary"]) == 2
+    assert "already exists" in capsys.readouterr().err
+    assert read_profiles() == {"agent-token": "hf_other"}
+    assert (hf_home() / "token").read_text() == "hf_old_login\n"
 
 
 def test_primary_does_not_adopt_registered_token(monkeypatch, capsys, pasted_token, quiet_browser):
