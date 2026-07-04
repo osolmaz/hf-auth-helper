@@ -113,7 +113,7 @@ def test_wizard_recommended_flow_auto_primary(monkeypatch, capsys, pasted_token,
 
 
 def test_wizard_destination_asked_when_login_exists(
-    monkeypatch, capsys, pasted_token, quiet_browser
+    monkeypatch, capsys, tmp_path, pasted_token, quiet_browser
 ):
     hf_home().mkdir(parents=True, exist_ok=True)
     (hf_home() / "token").write_text("hf_existing_login\n")
@@ -130,6 +130,7 @@ def test_wizard_destination_asked_when_login_exists(
     out = capsys.readouterr().out
     assert "Your own hf login on this machine is untouched." in out
     assert (hf_home() / "token").read_text() == "hf_existing_login\n"
+    assert (tmp_path / "agent.env").read_text() == "HF_TOKEN=hf_secret\n"
 
 
 def test_wizard_customize_flow_narrows_scopes(monkeypatch, capsys, pasted_token, quiet_browser):

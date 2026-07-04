@@ -51,22 +51,8 @@ everything you granted it — see the threat model in
 [docs/SPECIFICATION.md](docs/SPECIFICATION.md) for why "nothing irreversible"
 is the guarantee, not "nothing leaks".
 
-## Development
-
-```sh
-python -m pip install -e ".[dev]"
-ruff format --check .
-ruff check .
-ty check src tests
-pytest --cov=src/hf_auth_helper --cov-fail-under=85
-python scripts/check-mutation.py --min-kill-rate 80
-uvx slophammer-py@0.4.0 check .
-```
-
-The interactive prompts use [questionary](https://github.com/tmbo/questionary),
-vendored under `src/hf_auth_helper/vendor` (refresh with
-`python scripts/vendor.py`) so the published package has zero dependencies.
-The full behavior contract lives in [docs/SPECIFICATION.md](docs/SPECIFICATION.md).
+The full behavior contract, threat model, and design rationale live in
+[docs/SPECIFICATION.md](docs/SPECIFICATION.md).
 
 ## License
 

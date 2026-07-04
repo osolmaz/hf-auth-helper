@@ -17,3 +17,6 @@ def isolate_credential_files(monkeypatch, tmp_path):
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("HF_HOME", str(home / "hf"))
     monkeypatch.delenv("HF_TOKEN", raising=False)
+    # Relative paths (e.g. an env-file answer like "agent.env") must land
+    # in the test sandbox, never in the repository working tree.
+    monkeypatch.chdir(tmp_path)
