@@ -125,8 +125,8 @@ def _ask_manual_orgs(prompts: PromptBackend, exclude: list[str]) -> list[str]:
             manual.append(name)
 
 
-MACHINE_LOGIN_CHOICE = "This machine is the agent's — make the token its Hugging Face login"
-ENV_FILE_CHOICE = "I also work here — give the token only to the agent, via an env file"
+MACHINE_LOGIN_CHOICE = "a) This machine is the agent's — make the token its Hugging Face login"
+ENV_FILE_CHOICE = "b) I also work here — give the token only to the agent, via an env file"
 
 
 def choose_destination(prompts: PromptBackend) -> str:
