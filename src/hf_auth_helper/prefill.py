@@ -57,7 +57,7 @@ class Option:
 OPTIONS = (
     Option(
         key="gated",
-        question="Download models that required a license approval?",
+        question="Read gated models it has access to?",
         summary="read gated models",
         grants_gated_read=True,
     ),

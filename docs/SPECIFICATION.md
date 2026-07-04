@@ -140,7 +140,7 @@ concrete scopes; each default is the recommended value (all Yes).
 
 | # | Question | User scope | Org scope | Default |
 |---|----------|-----------|-----------|---------|
-| 1 | Download models that required a license approval? | `canReadGatedRepos` | — | Yes |
+| 1 | Read gated models it has access to? | `canReadGatedRepos` | — | Yes |
 | 2 | Read your collections? (helps it find your datasets and models) | `collection.read` | `collection.read` | Yes |
 | 3 | See access requests for your gated repos? (includes requester names/emails) | `repo.access.read` | `repo.access.read` | Yes |
 | 4 | Read your billing usage? (lets it check quota before heavy jobs) | `user.billing.read` | — | Yes |
@@ -177,7 +177,7 @@ the customize series.
 |-------|----------------|------------------------------------------|
 | `repo.content.read` | Core: the agent must read repos to work on them | Contents of private repos in scope |
 | `discussion.write` | Core: proposing changes is the point | PR/comment spam under your name (reversible) |
-| `canReadGatedRepos` | Agent workloads commonly run license-approved models | Gated model weights the account can access |
+| `canReadGatedRepos` | Agent workloads commonly run gated models | Gated model weights the account can access |
 | `collection.read` | Cheap discovery aid for navigating your resources | Collection structure/metadata |
 | `repo.access.read` | Lets the agent check gated-repo request state | Requester names/emails on your gated repos |
 | `user.billing.read` | Lets the agent check usage/quota before heavy work | Billing/usage metadata |
