@@ -56,10 +56,10 @@ so you only need to name the token and click 'Create token':
 
 ? Open this page in a browser on this machine? No
 ? Paste the new token (shown as asterisks): *************************************
-Verified: token 'osolmaz-hf-direct-access-bob' on account 'osolmaz' is propose-only —
+Verified: token 'agent-propose-only' on account 'your-username' is propose-only —
 the Hub confirms it cannot push commits, merge, change settings, or delete anything.
 ? How will the agent use this machine? a) This machine is the agent's — make the token its Hugging Face login
-Done. This machine's Hugging Face login is now the agent token (saved as profile 'osolmaz-hf-direct-access-bob').
+Done. This machine's Hugging Face login is now the agent token (saved as profile 'agent-propose-only').
 ```
 
 One interactive command:
