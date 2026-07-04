@@ -93,7 +93,8 @@ deliberately: the tool's guarantee is "nothing irreversible," not
   write-capable scope is refused. Unknown scopes fail closed.
 - **Cancel means cancel.** Ctrl-c at any prompt aborts the entire setup
   with one line on stderr and exit code 130. Nothing is stored.
-- **The token value is secret everywhere.** It is read with hidden input
+- **The token value is secret everywhere.** It is read with masked input
+  (asterisks interactively, fully hidden non-interactively)
   and is never echoed, logged, embedded in URLs or error messages, or
   written anywhere except the storage destination the user chose. This is
   a testable invariant: no output stream may ever contain the pasted
@@ -211,8 +212,9 @@ The browser is never launched unprompted. After printing the URL, ask
 The default is **No** when remote indicators are present
 (`SSH_CONNECTION`/`SSH_TTY` set, or no display environment), **Yes**
 otherwise. `--no-browser` skips the question and never opens one.
-Whatever the answer, the flow continues to the hidden-input token
-prompt.
+Whatever the answer, the flow continues to the token prompt, which
+masks the pasted value with asterisks (interactive) or hides it fully
+(non-interactive).
 
 ### Step 5 — Verification
 
@@ -248,8 +250,9 @@ step because the role check refuses them first.
 
 ### Step 6 — Storage
 
-The question is about usage, not files. If the machine has no active
-`hf` login, there is nothing to displace and no decision to make: the
+The question is about usage, not files. If the machine has no Hugging
+Face credentials at all (no active `hf` login *and* no stored token
+profiles), there is nothing to displace and no decision to make: the
 token becomes the machine's login automatically, with a line saying so.
 Otherwise, one select:
 

@@ -10,6 +10,7 @@ from hf_auth_helper.wizard import (
     ask_env_path,
     ask_open_browser,
     ask_profile_name,
+    ask_token,
     ask_use_recommended,
     choose_destination,
     choose_orgs,
@@ -29,11 +30,12 @@ class FakeQuestion:
 class FakeBackend:
     """Replays scripted answers and records every prompt."""
 
-    def __init__(self, confirms=(), checkboxes=(), texts=(), selects=()):
+    def __init__(self, confirms=(), checkboxes=(), texts=(), selects=(), passwords=()):
         self.confirms = list(confirms)
         self.checkboxes = list(checkboxes)
         self.texts = list(texts)
         self.selects = list(selects)
+        self.passwords = list(passwords)
         self.seen_choices = []
 
     def confirm(self, message, default=False):
@@ -49,6 +51,9 @@ class FakeBackend:
     def select(self, message, choices):
         self.seen_choices.append(list(choices))
         return FakeQuestion(self.selects.pop(0))
+
+    def password(self, message):
+        return FakeQuestion(self.passwords.pop(0))
 
 
 def test_declining_orgs_returns_nothing():
@@ -149,3 +154,9 @@ def test_confirm_replace_profile():
     assert confirm_replace_profile(FakeBackend(confirms=[False]), "agent") is False
     with pytest.raises(SetupCancelled):
         confirm_replace_profile(FakeBackend(confirms=[None]), "agent")
+
+
+def test_ask_token_strips_and_cancels():
+    assert ask_token(FakeBackend(passwords=["  hf_x  "])) == "hf_x"
+    with pytest.raises(SetupCancelled):
+        ask_token(FakeBackend(passwords=[None]))

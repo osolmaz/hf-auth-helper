@@ -48,6 +48,7 @@ from hf_auth_helper.wizard import (
     ask_env_path,
     ask_open_browser,
     ask_profile_name,
+    ask_token,
     ask_use_recommended,
     choose_destination,
     choose_orgs,
@@ -116,7 +117,10 @@ def _receive_and_store(
     selection: frozenset[str],
     orgs: tuple[str, ...],
 ) -> int:
-    token = getpass("Paste the new token (input stays hidden): ").strip()
+    if prompts is not None:
+        token = ask_token(prompts)
+    else:
+        token = getpass("Paste the new token (input stays hidden): ").strip()
     if not token:
         print("No token pasted; nothing was stored.", file=sys.stderr)
         return EXIT_ERROR
@@ -227,10 +231,10 @@ def _resolve_destination(args: argparse.Namespace, prompts: PromptBackend | None
         return "env"
     if args.profile is not None or prompts is None:
         return "profile"
-    if read_active_token() is None:
-        # A machine with no Hugging Face login yet is an agent box; there
-        # is nothing to displace, so there is no decision to ask about.
-        print("No Hugging Face login on this machine yet — making the agent token its login.")
+    if read_active_token() is None and not read_profiles():
+        # A machine with no login and no stored tokens is an agent box;
+        # there is nothing to displace, so there is no decision to ask.
+        print("No Hugging Face credentials on this machine yet — making the agent token its login.")
         return "primary"
     return choose_destination(prompts)
 

@@ -48,6 +48,8 @@ def quiet_browser(monkeypatch):
 
 @pytest.fixture
 def pasted_token(monkeypatch):
+    # Non-interactive paste path; interactive tests feed the token through
+    # the backend's password prompt instead.
     monkeypatch.setattr("hf_auth_helper.cli.getpass", lambda prompt: "hf_secret")
     monkeypatch.setattr("hf_auth_helper.cli.verify_token", lambda token: PROPOSE_ONLY)
 
@@ -95,6 +97,7 @@ def test_wizard_recommended_flow_auto_primary(monkeypatch, capsys, pasted_token,
     backend = FakeBackend(
         confirms=[True, True],  # use recommended; org confirm
         checkboxes=[["someorg"]],
+        passwords=["hf_secret"],
     )
     monkeypatch.setattr("hf_auth_helper.cli._prompt_backend", lambda: backend)
     monkeypatch.setattr("hf_auth_helper.cli._discover_orgs", lambda: ("someorg",))
@@ -103,7 +106,7 @@ def test_wizard_recommended_flow_auto_primary(monkeypatch, capsys, pasted_token,
     assert "orgs=someorg" in out
     assert "user.billing.read" in out
     # no existing login: the destination question is skipped, primary chosen
-    assert "No Hugging Face login on this machine yet" in out
+    assert "No Hugging Face credentials on this machine yet" in out
     assert backend.selects == []
     assert read_profiles() == {"agent-token": "hf_secret"}
     assert (hf_home() / "token").read_text() == "hf_secret\n"
@@ -119,6 +122,7 @@ def test_wizard_destination_asked_when_login_exists(
         confirms=[True, False],  # recommended; no orgs
         selects=[ENV_FILE_CHOICE],
         texts=["agent.env"],
+        passwords=["hf_secret"],
     )
     monkeypatch.setattr("hf_auth_helper.cli._prompt_backend", lambda: backend)
     monkeypatch.setattr("hf_auth_helper.cli._discover_orgs", lambda: ())
@@ -133,6 +137,7 @@ def test_wizard_customize_flow_narrows_scopes(monkeypatch, capsys, pasted_token,
     # gated yes, everything else no.
     backend = FakeBackend(
         confirms=[False, False, True, False, False, False, False],
+        passwords=["hf_secret"],
     )
     monkeypatch.setattr("hf_auth_helper.cli._prompt_backend", lambda: backend)
     monkeypatch.setattr("hf_auth_helper.cli._discover_orgs", lambda: ())
@@ -147,6 +152,7 @@ def test_wizard_customize_flow_narrows_scopes(monkeypatch, capsys, pasted_token,
 def test_org_flag_skips_org_prompt(monkeypatch, capsys, pasted_token, quiet_browser):
     backend = FakeBackend(
         confirms=[True],  # use recommended; no org confirm expected
+        passwords=["hf_secret"],
     )
     monkeypatch.setattr("hf_auth_helper.cli._prompt_backend", lambda: backend)
     assert main([*LOGIN, "--org", "flagorg"]) == 0
@@ -160,6 +166,7 @@ def test_interactive_collision_confirm_replaces_and_preserves(
     save_profile("hf_old", "agent-token")
     backend = FakeBackend(
         confirms=[True, False, True],  # recommended; no orgs; replace profile
+        passwords=["hf_secret"],
     )
     monkeypatch.setattr("hf_auth_helper.cli._prompt_backend", lambda: backend)
     monkeypatch.setattr("hf_auth_helper.cli._discover_orgs", lambda: ())
@@ -175,6 +182,7 @@ def test_interactive_replace_skips_backup_when_value_registered_elsewhere(
     save_profile("hf_old", "other-name")
     backend = FakeBackend(
         confirms=[True, False, True],
+        passwords=["hf_secret"],
     )
     monkeypatch.setattr("hf_auth_helper.cli._prompt_backend", lambda: backend)
     monkeypatch.setattr("hf_auth_helper.cli._discover_orgs", lambda: ())
@@ -189,6 +197,7 @@ def test_interactive_collision_decline_asks_new_name(
     backend = FakeBackend(
         confirms=[True, False, False],  # recommended; no orgs; do NOT replace
         texts=["agent-token-2"],
+        passwords=["hf_secret"],
     )
     monkeypatch.setattr("hf_auth_helper.cli._prompt_backend", lambda: backend)
     monkeypatch.setattr("hf_auth_helper.cli._discover_orgs", lambda: ())
@@ -369,6 +378,7 @@ def test_browser_opens_only_after_confirmation(monkeypatch, capsys, pasted_token
     )
     backend = FakeBackend(
         confirms=[True, False, True],  # recommended; no orgs; open browser
+        passwords=["hf_secret"],
     )
     monkeypatch.setattr("hf_auth_helper.cli._prompt_backend", lambda: backend)
     monkeypatch.setattr("hf_auth_helper.cli._discover_orgs", lambda: ())
@@ -403,6 +413,7 @@ def test_secrecy_no_output_stream_contains_the_token(
 ):
     backend = FakeBackend(
         confirms=[True, False],
+        passwords=["hf_secret"],
     )
     monkeypatch.setattr("hf_auth_helper.cli._prompt_backend", lambda: backend)
     monkeypatch.setattr("hf_auth_helper.cli._discover_orgs", lambda: ())
@@ -410,3 +421,22 @@ def test_secrecy_no_output_stream_contains_the_token(
     captured = capsys.readouterr()
     assert "hf_secret" not in captured.out
     assert "hf_secret" not in captured.err
+
+
+def test_destination_asked_when_profiles_exist_without_pointer(
+    monkeypatch, capsys, pasted_token, quiet_browser
+):
+    """Stored profiles count as existing credentials even with no active login."""
+    save_profile("hf_other_token", "earlier-agent")
+    backend = FakeBackend(
+        confirms=[True, False],
+        selects=[ENV_FILE_CHOICE],
+        texts=["agent.env"],
+        passwords=["hf_secret"],
+    )
+    monkeypatch.setattr("hf_auth_helper.cli._prompt_backend", lambda: backend)
+    monkeypatch.setattr("hf_auth_helper.cli._discover_orgs", lambda: ())
+    assert main(LOGIN) == 0
+    out = capsys.readouterr().out
+    assert "No Hugging Face credentials" not in out
+    assert backend.selects == []  # the select was consumed

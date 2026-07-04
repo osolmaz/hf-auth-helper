@@ -34,6 +34,8 @@ class PromptBackend(Protocol):
 
     def select(self, message: str, choices: Sequence[str]) -> Question: ...
 
+    def password(self, message: str) -> Question: ...
+
 
 def _answer(question: Question) -> object:
     """Return the prompt's answer; questionary yields None on ctrl-c."""
@@ -69,6 +71,12 @@ def ask_open_browser(prompts: PromptBackend, default: bool) -> bool:
         prompts.confirm("Open this page in a browser on this machine?", default=default)
     )
     return answer is True
+
+
+def ask_token(prompts: PromptBackend) -> str:
+    """Ask for the pasted token, masking the input with asterisks."""
+    answer = _answer(prompts.password("Paste the new token (shown as asterisks):"))
+    return answer.strip() if isinstance(answer, str) else ""
 
 
 def confirm_replace_profile(prompts: PromptBackend, name: str) -> bool:
