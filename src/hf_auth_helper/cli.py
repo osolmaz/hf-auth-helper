@@ -33,7 +33,6 @@ from hf_auth_helper.store import (
     ProfileExistsError,
     find_existing_token,
     find_profile_name,
-    hf_home,
     read_active_token,
     read_profiles,
     save_env,
@@ -84,6 +83,11 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _run_login(args: argparse.Namespace) -> int:
+    print(
+        "Setting up a token your agent can't do damage with: it will be able\n"
+        "to read and open pull requests for your review — never merge,\n"
+        "overwrite, or delete.\n"
+    )
     prompts = _prompt_backend()
     selection, orgs = _configure(args, prompts)
     print(summarize(orgs, selection))
@@ -124,7 +128,10 @@ def _receive_and_store(
     if not report.is_propose_only:
         _explain_refusal(report)
         return EXIT_REFUSED
-    print(f"Verified: token '{report.token_name}' on account '{report.username}' is propose-only.")
+    print(
+        f"Verified: token '{report.token_name}' on account '{report.username}' is propose-only —\n"
+        "the Hub confirms it can suggest changes but never merge, overwrite, or delete."
+    )
     _report_mismatch(report, selection, orgs)
     try:
         _store(args, prompts, token, report)
@@ -157,7 +164,8 @@ def _remote_session() -> bool:
 
 
 def _present_url(url: str, args: argparse.Namespace, prompts: PromptBackend | None) -> None:
-    print("Create the token on this page (scopes are preselected):\n")
+    print("Create the token on this page — the right boxes are already ticked,")
+    print("so you only need to name the token and click 'Create token':\n")
     print(f"  {url}\n")
     if args.no_browser or prompts is None:
         return
@@ -219,6 +227,11 @@ def _resolve_destination(args: argparse.Namespace, prompts: PromptBackend | None
         return "env"
     if args.profile is not None or prompts is None:
         return "profile"
+    if read_active_token() is None:
+        # A machine with no Hugging Face login yet is an agent box; there
+        # is nothing to displace, so there is no decision to ask about.
+        print("No Hugging Face login on this machine yet — making the agent token its login.")
+        return "primary"
     return choose_destination(prompts)
 
 
@@ -228,9 +241,11 @@ def _store_profile(
     token: str,
     report: TokenReport,
 ) -> None:
-    name = _register(profile, prompts, token, report, save_profile)
-    print(f"Saved as profile '{name}' ({hf_home() / 'stored_tokens'}).")
-    print(f"Activate it with: hf auth switch --token-name {name}")
+    suggested = _suggested_name(report)
+    initial = profile or (ask_profile_name(prompts, suggested) if prompts else suggested)
+    name = _register(initial, prompts, token, save_profile)
+    print(f"Saved as profile '{name}' — the agent is NOT logged in yet.")
+    print(f"To activate it, run: hf auth switch --token-name {name}")
 
 
 def _store_primary(
@@ -248,48 +263,73 @@ def _store_primary(
         adopted = _adopt_active_token(token, avoid=name)
         if adopted:
             print(f"Your current token wasn't saved under a name — kept it as '{adopted}'.")
+            print(f"Switch back to it anytime with: hf auth switch --token-name {adopted}")
         return save_primary(token, name, replace=True)
 
-    name = _register(args.profile, prompts, token, report, adopt_then_save_primary)
-    print(f"Saved as profile '{name}' and made it the primary hf token.")
+    name = _register(
+        args.profile or _suggested_name(report),
+        prompts,
+        token,
+        adopt_then_save_primary,
+        auto_suffix=args.profile is None and prompts is not None,
+    )
+    print(
+        f"Done. This machine's Hugging Face login is now the agent token "
+        f"(saved as profile '{name}')."
+    )
 
 
 def _store_env(args: argparse.Namespace, prompts: PromptBackend | None, token: str) -> None:
     env_path = args.env or (ask_env_path(prompts) if prompts else ".env")
     path, replaced = save_env(token, Path(env_path))
-    suffix = ", replacing the existing HF_TOKEN entry" if replaced else ""
-    print(f"Wrote HF_TOKEN to {path} (owner-only file mode){suffix}.")
+    suffix = " It replaces the HF_TOKEN that was in the file." if replaced else ""
+    print(f"Done. The agent can read HF_TOKEN from {path} (file readable only by you).{suffix}")
+    print("Your own hf login on this machine is untouched.")
 
 
 class _Saver(Protocol):
     def __call__(self, token: str, name: str, *, replace: bool = ...) -> Path: ...
 
 
+def _suggested_name(report: TokenReport) -> str:
+    return report.token_name or "propose-only"
+
+
 def _register(
-    profile: str | None,
+    name: str,
     prompts: PromptBackend | None,
     token: str,
-    report: TokenReport,
     save: _Saver,
+    *,
+    auto_suffix: bool = False,
 ) -> str:
-    suggested = report.token_name or "propose-only"
-    name = profile or (ask_profile_name(prompts, suggested) if prompts else suggested)
     while True:
         try:
             save(token, name)
             return name
         except ProfileExistsError:
+            if auto_suffix:
+                # The name is bookkeeping here, not a user choice; pick a
+                # free one instead of interrupting (nothing is destroyed).
+                name = unique_profile_name(name)
+                continue
             if prompts is None:
                 raise StoreRefusedError(
                     f"Profile '{name}' already exists with a different token."
                 ) from None
-            if confirm_replace_profile(prompts, name):
-                backup = _preserve_replaced_value(name)
-                if backup:
-                    print(f"The previous token under '{name}' was kept as '{backup}'.")
-                save(token, name, replace=True)
+            if _replace_confirmed(prompts, token, name, save):
                 return name
             name = ask_profile_name(prompts, unique_profile_name(name))
+
+
+def _replace_confirmed(prompts: PromptBackend, token: str, name: str, save: _Saver) -> bool:
+    if not confirm_replace_profile(prompts, name):
+        return False
+    backup = _preserve_replaced_value(name)
+    if backup:
+        print(f"The previous token under '{name}' was kept as '{backup}'.")
+    save(token, name, replace=True)
+    return True
 
 
 def _preserve_replaced_value(name: str) -> str | None:

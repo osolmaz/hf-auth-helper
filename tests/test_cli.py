@@ -8,6 +8,7 @@ from hf_auth_helper.cli import _discover_orgs, _remote_session, main
 from hf_auth_helper.scopes import ScopeViolation, TokenReport
 from hf_auth_helper.store import hf_home, read_profiles, save_profile
 from hf_auth_helper.verify import VerificationError
+from hf_auth_helper.wizard import ENV_FILE_CHOICE
 from tests.test_wizard import FakeBackend
 
 LOGIN = ["agent", "login", "--no-browser"]
@@ -90,12 +91,10 @@ def test_non_tty_profile_collision_refuses(capsys, pasted_token, quiet_browser):
     assert read_profiles() == {"agent-token": "hf_other"}
 
 
-def test_wizard_recommended_flow(monkeypatch, capsys, pasted_token, quiet_browser):
+def test_wizard_recommended_flow_auto_primary(monkeypatch, capsys, pasted_token, quiet_browser):
     backend = FakeBackend(
         confirms=[True, True],  # use recommended; org confirm
         checkboxes=[["someorg"]],
-        texts=["botname"],
-        selects=["Named hf CLI profile (activate with: hf auth switch)"],
     )
     monkeypatch.setattr("hf_auth_helper.cli._prompt_backend", lambda: backend)
     monkeypatch.setattr("hf_auth_helper.cli._discover_orgs", lambda: ("someorg",))
@@ -103,7 +102,30 @@ def test_wizard_recommended_flow(monkeypatch, capsys, pasted_token, quiet_browse
     out = capsys.readouterr().out
     assert "orgs=someorg" in out
     assert "user.billing.read" in out
-    assert read_profiles() == {"botname": "hf_secret"}
+    # no existing login: the destination question is skipped, primary chosen
+    assert "No Hugging Face login on this machine yet" in out
+    assert backend.selects == []
+    assert read_profiles() == {"agent-token": "hf_secret"}
+    assert (hf_home() / "token").read_text() == "hf_secret\n"
+
+
+def test_wizard_destination_asked_when_login_exists(
+    monkeypatch, capsys, pasted_token, quiet_browser
+):
+    hf_home().mkdir(parents=True, exist_ok=True)
+    (hf_home() / "token").write_text("hf_existing_login\n")
+    monkeypatch.setattr("hf_auth_helper.cli._display_name_of", lambda token: "my-login")
+    backend = FakeBackend(
+        confirms=[True, False],  # recommended; no orgs
+        selects=[ENV_FILE_CHOICE],
+        texts=["agent.env"],
+    )
+    monkeypatch.setattr("hf_auth_helper.cli._prompt_backend", lambda: backend)
+    monkeypatch.setattr("hf_auth_helper.cli._discover_orgs", lambda: ())
+    assert main(LOGIN) == 0
+    out = capsys.readouterr().out
+    assert "Your own hf login on this machine is untouched." in out
+    assert (hf_home() / "token").read_text() == "hf_existing_login\n"
 
 
 def test_wizard_customize_flow_narrows_scopes(monkeypatch, capsys, pasted_token, quiet_browser):
@@ -111,8 +133,6 @@ def test_wizard_customize_flow_narrows_scopes(monkeypatch, capsys, pasted_token,
     # gated yes, everything else no.
     backend = FakeBackend(
         confirms=[False, False, True, False, False, False, False],
-        texts=["botname"],
-        selects=["Named hf CLI profile (activate with: hf auth switch)"],
     )
     monkeypatch.setattr("hf_auth_helper.cli._prompt_backend", lambda: backend)
     monkeypatch.setattr("hf_auth_helper.cli._discover_orgs", lambda: ())
@@ -127,8 +147,6 @@ def test_wizard_customize_flow_narrows_scopes(monkeypatch, capsys, pasted_token,
 def test_org_flag_skips_org_prompt(monkeypatch, capsys, pasted_token, quiet_browser):
     backend = FakeBackend(
         confirms=[True],  # use recommended; no org confirm expected
-        texts=["botname"],
-        selects=["Named hf CLI profile (activate with: hf auth switch)"],
     )
     monkeypatch.setattr("hf_auth_helper.cli._prompt_backend", lambda: backend)
     assert main([*LOGIN, "--org", "flagorg"]) == 0
@@ -142,12 +160,10 @@ def test_interactive_collision_confirm_replaces_and_preserves(
     save_profile("hf_old", "agent-token")
     backend = FakeBackend(
         confirms=[True, False, True],  # recommended; no orgs; replace profile
-        texts=["agent-token"],
-        selects=["Named hf CLI profile (activate with: hf auth switch)"],
     )
     monkeypatch.setattr("hf_auth_helper.cli._prompt_backend", lambda: backend)
     monkeypatch.setattr("hf_auth_helper.cli._discover_orgs", lambda: ())
-    assert main(LOGIN) == 0
+    assert main([*LOGIN, "--profile", "agent-token"]) == 0
     assert "kept as 'agent-token-2'" in capsys.readouterr().out
     assert read_profiles() == {"agent-token": "hf_secret", "agent-token-2": "hf_old"}
 
@@ -159,12 +175,10 @@ def test_interactive_replace_skips_backup_when_value_registered_elsewhere(
     save_profile("hf_old", "other-name")
     backend = FakeBackend(
         confirms=[True, False, True],
-        texts=["agent-token"],
-        selects=["Named hf CLI profile (activate with: hf auth switch)"],
     )
     monkeypatch.setattr("hf_auth_helper.cli._prompt_backend", lambda: backend)
     monkeypatch.setattr("hf_auth_helper.cli._discover_orgs", lambda: ())
-    assert main(LOGIN) == 0
+    assert main([*LOGIN, "--profile", "agent-token"]) == 0
     assert read_profiles() == {"agent-token": "hf_secret", "other-name": "hf_old"}
 
 
@@ -174,12 +188,11 @@ def test_interactive_collision_decline_asks_new_name(
     save_profile("hf_old", "agent-token")
     backend = FakeBackend(
         confirms=[True, False, False],  # recommended; no orgs; do NOT replace
-        texts=["agent-token", "agent-token-2"],
-        selects=["Named hf CLI profile (activate with: hf auth switch)"],
+        texts=["agent-token-2"],
     )
     monkeypatch.setattr("hf_auth_helper.cli._prompt_backend", lambda: backend)
     monkeypatch.setattr("hf_auth_helper.cli._discover_orgs", lambda: ())
-    assert main(LOGIN) == 0
+    assert main([*LOGIN, "--profile", "agent-token"]) == 0
     assert read_profiles() == {"agent-token": "hf_old", "agent-token-2": "hf_secret"}
 
 
@@ -240,7 +253,7 @@ def test_env_destination_reports_replacement(tmp_path, capsys, pasted_token, qui
     env_file = tmp_path / ".env"
     env_file.write_text("HF_TOKEN=hf_old\n")
     assert main([*LOGIN, "--env", str(env_file)]) == 0
-    assert "replacing the existing HF_TOKEN entry" in capsys.readouterr().out
+    assert "It replaces the HF_TOKEN that was in the file." in capsys.readouterr().out
     assert env_file.read_text() == "HF_TOKEN=hf_secret\n"
 
 
@@ -356,8 +369,6 @@ def test_browser_opens_only_after_confirmation(monkeypatch, capsys, pasted_token
     )
     backend = FakeBackend(
         confirms=[True, False, True],  # recommended; no orgs; open browser
-        texts=["botname"],
-        selects=["Named hf CLI profile (activate with: hf auth switch)"],
     )
     monkeypatch.setattr("hf_auth_helper.cli._prompt_backend", lambda: backend)
     monkeypatch.setattr("hf_auth_helper.cli._discover_orgs", lambda: ())
@@ -392,8 +403,6 @@ def test_secrecy_no_output_stream_contains_the_token(
 ):
     backend = FakeBackend(
         confirms=[True, False],
-        texts=["botname"],
-        selects=["Named hf CLI profile (activate with: hf auth switch)"],
     )
     monkeypatch.setattr("hf_auth_helper.cli._prompt_backend", lambda: backend)
     monkeypatch.setattr("hf_auth_helper.cli._discover_orgs", lambda: ())

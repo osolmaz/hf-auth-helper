@@ -117,24 +117,20 @@ def _ask_manual_orgs(prompts: PromptBackend, exclude: list[str]) -> list[str]:
             manual.append(name)
 
 
+MACHINE_LOGIN_CHOICE = "This machine is the agent's — make the token its Hugging Face login"
+ENV_FILE_CHOICE = "I also work here — give the token only to the agent, via an env file"
+
+
 def choose_destination(prompts: PromptBackend) -> str:
-    """Ask where the verified token should be stored."""
+    """Ask how the agent uses this machine; that decides where the token goes."""
     answer = _answer(
         prompts.select(
-            "Where should the token go?",
-            choices=[
-                "Named hf CLI profile (activate with: hf auth switch)",
-                "Primary hf CLI token",
-                "Env file (HF_TOKEN=…)",
-            ],
+            "How will the agent use this machine?",
+            choices=[MACHINE_LOGIN_CHOICE, ENV_FILE_CHOICE],
         )
     )
     text = answer if isinstance(answer, str) else ""
-    if text.startswith("Primary"):
-        return "primary"
-    if text.startswith("Env"):
-        return "env"
-    return "profile"
+    return "env" if text == ENV_FILE_CHOICE else "primary"
 
 
 def ask_profile_name(prompts: PromptBackend, suggested: str) -> str:
@@ -146,7 +142,9 @@ def ask_profile_name(prompts: PromptBackend, suggested: str) -> str:
 
 def ask_env_path(prompts: PromptBackend) -> str:
     """Ask which env file to write HF_TOKEN into."""
-    answer = _answer(prompts.text("Env file path:", default=".env"))
+    answer = _answer(
+        prompts.text("Env file for the agent process (it reads HF_TOKEN from it):", default=".env")
+    )
     path = answer.strip() if isinstance(answer, str) else ""
     return path or ".env"
 

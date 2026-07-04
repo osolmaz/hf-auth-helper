@@ -4,6 +4,8 @@ import pytest
 
 from hf_auth_helper.wizard import (
     ENTER_MANUALLY,
+    ENV_FILE_CHOICE,
+    MACHINE_LOGIN_CHOICE,
     SetupCancelled,
     ask_env_path,
     ask_open_browser,
@@ -100,9 +102,11 @@ def test_no_detected_orgs_goes_straight_to_manual():
 
 
 def test_choose_destination_maps_selections():
-    assert choose_destination(FakeBackend(selects=["Primary hf CLI token"])) == "primary"
-    assert choose_destination(FakeBackend(selects=["Env file (HF_TOKEN=…)"])) == "env"
-    assert choose_destination(FakeBackend(selects=["Named hf CLI profile (x)"])) == "profile"
+    assert choose_destination(FakeBackend(selects=[MACHINE_LOGIN_CHOICE])) == "primary"
+    assert choose_destination(FakeBackend(selects=[ENV_FILE_CHOICE])) == "env"
+    backend = FakeBackend(selects=[MACHINE_LOGIN_CHOICE])
+    choose_destination(backend)
+    assert backend.seen_choices == [[MACHINE_LOGIN_CHOICE, ENV_FILE_CHOICE]]
 
 
 def test_ask_profile_name_falls_back_to_suggestion():
