@@ -150,6 +150,25 @@ def test_empty_paste_exits_without_storing(monkeypatch, capsys, quiet_browser):
     assert "nothing was stored" in capsys.readouterr().err
 
 
+def test_ctrl_c_at_token_paste_is_graceful(monkeypatch, capsys, quiet_browser):
+    def interrupt(prompt):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr("hf_auth_helper.cli.getpass", interrupt)
+    assert main(["--no-browser"]) == 130
+    assert "Cancelled; nothing was stored." in capsys.readouterr().err
+
+
+def test_ctrl_c_in_wizard_cancels_whole_setup(monkeypatch, capsys, tmp_path, quiet_browser):
+    backend = FakeBackend(confirms=[True], texts=[None])
+    monkeypatch.setattr("hf_auth_helper.cli._prompt_backend", lambda: backend)
+    monkeypatch.setattr("hf_auth_helper.cli._discover_orgs", lambda: ())
+    assert main(["--no-browser"]) == 130
+    captured = capsys.readouterr()
+    assert "Cancelled; nothing was stored." in captured.err
+    assert "Create the token" not in captured.out
+
+
 def test_browser_open_is_reported(monkeypatch, capsys):
     monkeypatch.setattr("hf_auth_helper.cli.webbrowser.open", lambda url: True)
     monkeypatch.setattr("hf_auth_helper.cli.getpass", lambda prompt: "")

@@ -12,6 +12,10 @@ from typing import Protocol, runtime_checkable
 ENTER_MANUALLY = "Enter another organization manually…"
 
 
+class SetupCancelled(Exception):  # noqa: N818 -- a control-flow signal, not an error
+    """The user cancelled the setup (ctrl-c) mid-prompt."""
+
+
 class Question(Protocol):
     """The subset of a questionary question the wizard uses."""
 
@@ -31,12 +35,22 @@ class PromptBackend(Protocol):
     def select(self, message: str, choices: Sequence[str]) -> Question: ...
 
 
+def _answer(question: Question) -> object:
+    """Return the prompt's answer; questionary yields None on ctrl-c."""
+    answer = question.ask()
+    if answer is None:
+        raise SetupCancelled
+    return answer
+
+
 def choose_orgs(prompts: PromptBackend, detected: tuple[str, ...]) -> tuple[str, ...]:
     """Ask which organizations the agent token should extend to."""
-    wants_orgs = prompts.confirm(
-        "Grant the agent propose-only access to organizations as well?",
-        default=bool(detected),
-    ).ask()
+    wants_orgs = _answer(
+        prompts.confirm(
+            "Grant the agent propose-only access to organizations as well?",
+            default=bool(detected),
+        )
+    )
     if wants_orgs is not True:
         return ()
     chosen = _choose_detected(prompts, detected) if detected else [ENTER_MANUALLY]
@@ -47,17 +61,19 @@ def choose_orgs(prompts: PromptBackend, detected: tuple[str, ...]) -> tuple[str,
 
 
 def _choose_detected(prompts: PromptBackend, detected: tuple[str, ...]) -> list[str]:
-    answer = prompts.checkbox(
-        "Select organizations (space to toggle, enter to confirm):",
-        choices=[*detected, ENTER_MANUALLY],
-    ).ask()
+    answer = _answer(
+        prompts.checkbox(
+            "Select organizations (space to toggle, enter to confirm):",
+            choices=[*detected, ENTER_MANUALLY],
+        )
+    )
     return _string_list(answer)
 
 
 def _ask_manual_orgs(prompts: PromptBackend, exclude: list[str]) -> list[str]:
     manual: list[str] = []
     while True:
-        answer = prompts.text("Organization name (leave empty to finish):").ask()
+        answer = _answer(prompts.text("Organization name (leave empty to finish):"))
         name = answer.strip() if isinstance(answer, str) else ""
         if not name:
             return manual
@@ -67,14 +83,16 @@ def _ask_manual_orgs(prompts: PromptBackend, exclude: list[str]) -> list[str]:
 
 def choose_destination(prompts: PromptBackend) -> str:
     """Ask where the verified token should be stored."""
-    answer = prompts.select(
-        "Where should the token go?",
-        choices=[
-            "Named hf CLI profile (activate with: hf auth switch)",
-            "Primary hf CLI token",
-            "Env file (HF_TOKEN=…)",
-        ],
-    ).ask()
+    answer = _answer(
+        prompts.select(
+            "Where should the token go?",
+            choices=[
+                "Named hf CLI profile (activate with: hf auth switch)",
+                "Primary hf CLI token",
+                "Env file (HF_TOKEN=…)",
+            ],
+        )
+    )
     text = answer if isinstance(answer, str) else ""
     if text.startswith("Primary"):
         return "primary"
@@ -85,14 +103,14 @@ def choose_destination(prompts: PromptBackend) -> str:
 
 def ask_profile_name(prompts: PromptBackend, suggested: str) -> str:
     """Ask for the profile name, offering a suggestion."""
-    answer = prompts.text("Profile name:", default=suggested).ask()
+    answer = _answer(prompts.text("Profile name:", default=suggested))
     name = answer.strip() if isinstance(answer, str) else ""
     return name or suggested
 
 
 def ask_env_path(prompts: PromptBackend) -> str:
     """Ask which env file to write HF_TOKEN into."""
-    answer = prompts.text("Env file path:", default=".env").ask()
+    answer = _answer(prompts.text("Env file path:", default=".env"))
     path = answer.strip() if isinstance(answer, str) else ""
     return path or ".env"
 

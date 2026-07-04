@@ -1,7 +1,10 @@
 """Tests for the interactive wizard steps, using a fake prompt backend."""
 
+import pytest
+
 from hf_auth_helper.wizard import (
     ENTER_MANUALLY,
+    SetupCancelled,
     ask_env_path,
     ask_profile_name,
     choose_destination,
@@ -47,9 +50,19 @@ def test_declining_orgs_returns_nothing():
     assert choose_orgs(backend, ("someorg",)) == ()
 
 
-def test_ctrl_c_on_confirm_counts_as_decline():
-    backend = FakeBackend(confirms=[None])
-    assert choose_orgs(backend, ("someorg",)) == ()
+def test_ctrl_c_cancels_at_any_prompt():
+    with pytest.raises(SetupCancelled):
+        choose_orgs(FakeBackend(confirms=[None]), ("someorg",))
+    with pytest.raises(SetupCancelled):
+        choose_orgs(FakeBackend(confirms=[True], checkboxes=[None]), ("someorg",))
+    with pytest.raises(SetupCancelled):
+        choose_orgs(FakeBackend(confirms=[True], texts=[None]), ())
+    with pytest.raises(SetupCancelled):
+        choose_destination(FakeBackend(selects=[None]))
+    with pytest.raises(SetupCancelled):
+        ask_profile_name(FakeBackend(texts=[None]), "suggested")
+    with pytest.raises(SetupCancelled):
+        ask_env_path(FakeBackend(texts=[None]))
 
 
 def test_detected_orgs_are_offered_with_manual_escape_hatch():
@@ -86,15 +99,13 @@ def test_choose_destination_maps_selections():
     assert choose_destination(FakeBackend(selects=["Primary hf CLI token"])) == "primary"
     assert choose_destination(FakeBackend(selects=["Env file (HF_TOKEN=…)"])) == "env"
     assert choose_destination(FakeBackend(selects=["Named hf CLI profile (x)"])) == "profile"
-    assert choose_destination(FakeBackend(selects=[None])) == "profile"
 
 
 def test_ask_profile_name_falls_back_to_suggestion():
     assert ask_profile_name(FakeBackend(texts=["custom"]), "suggested") == "custom"
     assert ask_profile_name(FakeBackend(texts=["  "]), "suggested") == "suggested"
-    assert ask_profile_name(FakeBackend(texts=[None]), "suggested") == "suggested"
 
 
 def test_ask_env_path_defaults():
     assert ask_env_path(FakeBackend(texts=["service/.env"])) == "service/.env"
-    assert ask_env_path(FakeBackend(texts=[None])) == ".env"
+    assert ask_env_path(FakeBackend(texts=["  "])) == ".env"

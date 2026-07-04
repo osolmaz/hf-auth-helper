@@ -23,6 +23,7 @@ from hf_auth_helper.vendored import load_questionary
 from hf_auth_helper.verify import VerificationError, fetch_whoami, verify_token
 from hf_auth_helper.wizard import (
     PromptBackend,
+    SetupCancelled,
     ask_env_path,
     ask_profile_name,
     choose_destination,
@@ -32,6 +33,7 @@ from hf_auth_helper.wizard import (
 EXIT_OK = 0
 EXIT_REFUSED = 1
 EXIT_ERROR = 2
+EXIT_CANCELLED = 130
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -40,6 +42,14 @@ def main(argv: list[str] | None = None) -> int:
         url = build_prefill_url(orgs=tuple(args.org), read_gated_repos=args.gated)
         print(json.dumps({"prefill_url": url}) if args.json else url)
         return EXIT_OK
+    try:
+        return _run_setup(args)
+    except (SetupCancelled, KeyboardInterrupt):
+        print("\nCancelled; nothing was stored.", file=sys.stderr)
+        return EXIT_CANCELLED
+
+
+def _run_setup(args: argparse.Namespace) -> int:
     prompts = _prompt_backend()
     orgs = tuple(args.org)
     if not orgs and prompts is not None:
