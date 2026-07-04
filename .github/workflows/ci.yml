@@ -24,6 +24,6 @@ jobs:
       - name: Audit dependencies
         run: |
           python -m pip freeze --exclude-editable > /tmp/requirements.txt
-          uvx pip-audit -r /tmp/requirements.txt --disable-pip
+          uvx pip-audit -r /tmp/requirements.txt --disable-pip --no-deps
       - run: uvx slophammer-py@0.4.0 dry .
       - run: uvx slophammer-py@0.4.0 check .
