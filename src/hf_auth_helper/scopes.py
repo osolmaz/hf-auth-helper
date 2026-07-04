@@ -46,6 +46,8 @@ class TokenReport:
 
     role: str
     violations: tuple[ScopeViolation, ...]
+    username: str = ""
+    token_name: str = ""
 
     @property
     def is_propose_only(self) -> bool:
@@ -62,7 +64,12 @@ def evaluate_whoami(payload: Mapping[str, object]) -> TokenReport:
         for entity, permission in _iter_permissions(fine_grained)
         if permission not in SAFE_PERMISSIONS
     ]
-    return TokenReport(role=role, violations=tuple(violations))
+    return TokenReport(
+        role=role,
+        violations=tuple(violations),
+        username=_text(payload.get("name")),
+        token_name=_text(access_token.get("displayName")),
+    )
 
 
 def _iter_permissions(fine_grained: Mapping[str, object]) -> list[tuple[str, str]]:

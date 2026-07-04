@@ -15,3 +15,6 @@ python:
   mutation:
     targets:
       - src/hf_auth_helper/scopes.py
+      - src/hf_auth_helper/prefill.py
+      - src/hf_auth_helper/store.py
+      - src/hf_auth_helper/verify.py

@@ -76,6 +76,14 @@ testpaths = ["tests"]
 # a signature that lies about its types fails the suite.
 addopts = "--typeguard-packages=hf_auth_helper"
 
+# Mutation targets the security-relevant logic; cli.py is presentation
+# (argparse help text, printed messages) and is covered by behavior tests.
 [tool.mutmut]
-paths_to_mutate = ["src/hf_auth_helper/"]
+paths_to_mutate = [
+  "src/hf_auth_helper/scopes.py",
+  "src/hf_auth_helper/prefill.py",
+  "src/hf_auth_helper/store.py",
+  "src/hf_auth_helper/verify.py",
+]
 tests_dir = ["tests/"]
+also_copy = ["src/hf_auth_helper/cli.py", "src/hf_auth_helper/__init__.py"]
