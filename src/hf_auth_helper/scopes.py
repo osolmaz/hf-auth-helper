@@ -72,6 +72,12 @@ def evaluate_whoami(payload: Mapping[str, object]) -> TokenReport:
     )
 
 
+def extract_org_names(payload: Mapping[str, object]) -> tuple[str, ...]:
+    """Organization names the account belongs to, from a ``whoami-v2`` payload."""
+    names = (_text(_mapping(org).get("name")) for org in _sequence(payload.get("orgs")))
+    return tuple(name for name in names if name)
+
+
 def _iter_permissions(fine_grained: Mapping[str, object]) -> list[tuple[str, str]]:
     pairs = [("global", permission) for permission in _texts(fine_grained.get("global"))]
     for scope in _sequence(fine_grained.get("scoped")):

@@ -8,17 +8,33 @@ can delete your datasets, Spaces, and buckets. `hf-auth-helper` sets up
 **propose-only** access instead: the agent can read and open pull requests,
 but a human has to merge — nothing the agent does is irreversible.
 
-> Status: early. The prefill-URL command works; interactive verification and
-> token storage are under development.
-
 ## Usage
-
-Print a Hugging Face token-creation URL with the propose-only scopes
-preselected — open it, name the token, click create:
 
 ```sh
 uvx hf-auth-helper
-uvx hf-auth-helper --org my-org --gated
+```
+
+One interactive command:
+
+1. **Organizations** — if you're already logged into the `hf` CLI, your orgs
+   are detected and offered as a checklist; otherwise (or additionally) enter
+   names manually.
+2. **Token form** — your browser opens the Hugging Face token page with the
+   propose-only scopes preselected; you just name the token and click create.
+3. **Verification** — paste the token (input stays hidden) and it is checked
+   against the Hub: if its scopes allow anything beyond reading and opening
+   pull requests, it is **refused** with the violating permissions named, and
+   nothing is stored.
+4. **Storage** — keep it as a named `hf` CLI profile (activate with
+   `hf auth switch`), make it the primary token, or write an `HF_TOKEN=` line
+   into an env file for a single agent process.
+
+Non-interactive use:
+
+```sh
+uvx hf-auth-helper --org my-org --gated --profile my-agent
+uvx hf-auth-helper --env /path/to/agent/.env
+uvx hf-auth-helper --url-only --org my-org        # just print the prefill URL
 ```
 
 The selected scopes are `repo.content.read` (read repo contents) and
@@ -32,9 +48,15 @@ delete anything.
 python -m pip install -e ".[dev]"
 ruff format --check .
 ruff check .
-ty check
-pytest
+ty check src tests
+pytest --cov=src/hf_auth_helper --cov-fail-under=85
+python scripts/check-mutation.py --min-kill-rate 80
+uvx slophammer-py@0.4.0 check .
 ```
+
+The interactive prompts use [questionary](https://github.com/tmbo/questionary),
+vendored under `src/hf_auth_helper/vendor` (refresh with
+`python scripts/vendor.py`) so the published package has zero dependencies.
 
 ## License
 

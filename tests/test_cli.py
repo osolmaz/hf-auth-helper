@@ -4,9 +4,10 @@ import json
 
 import pytest
 
-from hf_auth_helper.cli import main
+from hf_auth_helper.cli import _discover_orgs, main
 from hf_auth_helper.scopes import ScopeViolation, TokenReport
 from hf_auth_helper.verify import VerificationError
+from tests.test_wizard import FakeBackend
 
 PROPOSE_ONLY = TokenReport(
     role="fineGrained", violations=(), username="someuser", token_name="agent-token"
@@ -37,16 +38,54 @@ def test_url_only_json_with_org_and_gated(capsys):
     assert "canReadGatedRepos=true" in payload["prefill_url"]
 
 
-def test_interactive_flow_saves_profile(monkeypatch, capsys, tmp_path, quiet_browser):
+def test_non_tty_flow_saves_profile_under_token_name(monkeypatch, capsys, tmp_path, quiet_browser):
     monkeypatch.setenv("HF_HOME", str(tmp_path))
     monkeypatch.setattr("hf_auth_helper.cli.getpass", lambda prompt: "hf_secret")
     monkeypatch.setattr("hf_auth_helper.cli.verify_token", lambda token: PROPOSE_ONLY)
-    monkeypatch.setattr("builtins.input", lambda prompt: "")
     assert main(["--no-browser"]) == 0
     out = capsys.readouterr().out
     assert "propose-only" in out
     assert "hf auth switch --token-name agent-token" in out
     assert "hf_secret" in (tmp_path / "stored_tokens").read_text()
+
+
+def test_wizard_flow_selects_orgs_and_destination(monkeypatch, capsys, tmp_path, quiet_browser):
+    monkeypatch.setenv("HF_HOME", str(tmp_path))
+    backend = FakeBackend(
+        confirms=[True],
+        checkboxes=[["someorg", "otherorg"]],
+        texts=["botname"],
+        selects=["Named hf CLI profile (activate with: hf auth switch)"],
+    )
+    monkeypatch.setattr("hf_auth_helper.cli._prompt_backend", lambda: backend)
+    monkeypatch.setattr("hf_auth_helper.cli._discover_orgs", lambda: ("someorg", "otherorg"))
+    monkeypatch.setattr("hf_auth_helper.cli.getpass", lambda prompt: "hf_secret")
+    monkeypatch.setattr("hf_auth_helper.cli.verify_token", lambda token: PROPOSE_ONLY)
+    assert main(["--no-browser"]) == 0
+    out = capsys.readouterr().out
+    assert "orgs=someorg&orgs=otherorg" in out
+    assert "[botname]" in (tmp_path / "stored_tokens").read_text()
+
+
+def test_discover_orgs_uses_existing_token(monkeypatch):
+    monkeypatch.setattr("hf_auth_helper.cli.find_existing_token", lambda: "hf_existing")
+    monkeypatch.setattr(
+        "hf_auth_helper.cli.fetch_whoami",
+        lambda token: {"orgs": [{"name": "someorg"}, {"name": "otherorg"}]},
+    )
+    assert _discover_orgs() == ("someorg", "otherorg")
+
+
+def test_discover_orgs_without_token_or_network(monkeypatch):
+    monkeypatch.setattr("hf_auth_helper.cli.find_existing_token", lambda: None)
+    assert _discover_orgs() == ()
+
+    def explode(token):
+        raise VerificationError("down")
+
+    monkeypatch.setattr("hf_auth_helper.cli.find_existing_token", lambda: "hf_existing")
+    monkeypatch.setattr("hf_auth_helper.cli.fetch_whoami", explode)
+    assert _discover_orgs() == ()
 
 
 def test_explicit_profile_name_skips_prompt(monkeypatch, capsys, tmp_path, quiet_browser):

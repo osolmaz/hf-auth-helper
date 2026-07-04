@@ -1,10 +1,11 @@
 """Command-line entry point for hf-auth-helper.
 
-The default run is an interactive setup: open the Hub's token form with the
-propose-only scopes preselected, receive the pasted token, verify against
-the Hub that it really is propose-only, and store it where the user chooses.
-The token is refused — never stored — if its scopes allow anything beyond
-reading and opening pull requests.
+The default run is an interactive setup: pick the organizations the agent
+should reach (detected from an existing ``hf`` login when possible), open
+the Hub's token form with the propose-only scopes preselected, receive the
+pasted token, verify against the Hub that it really is propose-only, and
+store it where the user chooses. The token is refused — never stored — if
+its scopes allow anything beyond reading and opening pull requests.
 """
 
 import argparse
@@ -13,11 +14,20 @@ import sys
 import webbrowser
 from getpass import getpass
 from pathlib import Path
+from typing import cast
 
 from hf_auth_helper.prefill import build_prefill_url
-from hf_auth_helper.scopes import TokenReport
-from hf_auth_helper.store import save_env, save_primary, save_profile
-from hf_auth_helper.verify import VerificationError, verify_token
+from hf_auth_helper.scopes import TokenReport, extract_org_names
+from hf_auth_helper.store import find_existing_token, save_env, save_primary, save_profile
+from hf_auth_helper.vendored import load_questionary
+from hf_auth_helper.verify import VerificationError, fetch_whoami, verify_token
+from hf_auth_helper.wizard import (
+    PromptBackend,
+    ask_env_path,
+    ask_profile_name,
+    choose_destination,
+    choose_orgs,
+)
 
 EXIT_OK = 0
 EXIT_REFUSED = 1
@@ -26,11 +36,19 @@ EXIT_ERROR = 2
 
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(sys.argv[1:] if argv is None else argv)
-    url = build_prefill_url(orgs=tuple(args.org), read_gated_repos=args.gated)
     if args.url_only:
+        url = build_prefill_url(orgs=tuple(args.org), read_gated_repos=args.gated)
         print(json.dumps({"prefill_url": url}) if args.json else url)
         return EXIT_OK
-    _present_url(url, open_browser=not args.no_browser)
+    prompts = _prompt_backend()
+    orgs = tuple(args.org)
+    if not orgs and prompts is not None:
+        orgs = choose_orgs(prompts, _discover_orgs())
+    _present_url(build_prefill_url(orgs=orgs, read_gated_repos=args.gated), not args.no_browser)
+    return _receive_and_store(args, prompts)
+
+
+def _receive_and_store(args: argparse.Namespace, prompts: PromptBackend | None) -> int:
     token = getpass("Paste the new token (input stays hidden): ").strip()
     if not token:
         print("No token pasted; nothing was stored.", file=sys.stderr)
@@ -44,8 +62,24 @@ def main(argv: list[str] | None = None) -> int:
         _explain_refusal(report)
         return EXIT_REFUSED
     print(f"Verified: token '{report.token_name}' on account '{report.username}' is propose-only.")
-    _store(args, token, report)
+    _store(args, prompts, token, report)
     return EXIT_OK
+
+
+def _prompt_backend() -> PromptBackend | None:
+    if not (sys.stdin.isatty() and sys.stdout.isatty()):
+        return None
+    return cast("PromptBackend", load_questionary())
+
+
+def _discover_orgs() -> tuple[str, ...]:
+    existing = find_existing_token()
+    if not existing:
+        return ()
+    try:
+        return extract_org_names(fetch_whoami(existing))
+    except VerificationError:
+        return ()
 
 
 def _present_url(url: str, open_browser: bool) -> None:
@@ -64,28 +98,43 @@ def _explain_refusal(report: TokenReport) -> None:
     print("Delete it on https://huggingface.co/settings/tokens and retry.", file=sys.stderr)
 
 
-def _store(args: argparse.Namespace, token: str, report: TokenReport) -> None:
-    if args.primary:
-        path = save_primary(token)
-        print(f"Saved as the primary hf token ({path}).")
-    elif args.env is not None:
-        path = save_env(token, Path(args.env))
-        print(f"Wrote HF_TOKEN to {path} (owner-only file mode).")
+def _store(
+    args: argparse.Namespace,
+    prompts: PromptBackend | None,
+    token: str,
+    report: TokenReport,
+) -> None:
+    destination = _resolve_destination(args, prompts)
+    if destination == "primary":
+        print(f"Saved as the primary hf token ({save_primary(token)}).")
+    elif destination == "env":
+        env_path = args.env or (ask_env_path(prompts) if prompts else ".env")
+        print(f"Wrote HF_TOKEN to {save_env(token, Path(env_path))} (owner-only file mode).")
     else:
-        _store_profile(args.profile, token, report)
+        _store_profile(args.profile, prompts, token, report)
 
 
-def _store_profile(profile: str | None, token: str, report: TokenReport) -> None:
-    name = profile or _choose_profile_name(report)
+def _resolve_destination(args: argparse.Namespace, prompts: PromptBackend | None) -> str:
+    if args.primary:
+        return "primary"
+    if args.env is not None:
+        return "env"
+    if args.profile is not None or prompts is None:
+        return "profile"
+    return choose_destination(prompts)
+
+
+def _store_profile(
+    profile: str | None,
+    prompts: PromptBackend | None,
+    token: str,
+    report: TokenReport,
+) -> None:
+    suggested = report.token_name or "propose-only"
+    name = profile or (ask_profile_name(prompts, suggested) if prompts else suggested)
     path = save_profile(token, name)
     print(f"Saved as profile '{name}' ({path}).")
     print(f"Activate it with: hf auth switch --token-name {name}")
-
-
-def _choose_profile_name(report: TokenReport) -> str:
-    suggested = report.token_name or "propose-only"
-    answer = input(f"Profile name [{suggested}]: ").strip()
-    return answer or suggested
 
 
 def _parse_args(argv: list[str]) -> argparse.Namespace:
@@ -98,7 +147,7 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
         action="append",
         default=[],
         metavar="NAME",
-        help="also grant propose-only access to this organization (repeatable)",
+        help="grant propose-only access to this organization (repeatable; skips the prompt)",
     )
     parser.add_argument(
         "--gated",
@@ -109,7 +158,7 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     destination.add_argument(
         "--profile",
         metavar="NAME",
-        help="store as a named hf CLI profile (default; prompts for a name)",
+        help="store as a named hf CLI profile (the default destination)",
     )
     destination.add_argument(
         "--primary",

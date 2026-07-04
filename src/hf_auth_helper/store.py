@@ -19,6 +19,22 @@ def hf_home() -> Path:
     return Path(home) if home else Path.home() / ".cache" / "huggingface"
 
 
+def find_existing_token() -> str | None:
+    """An already-configured Hub token, if the machine has one.
+
+    Checks ``HF_TOKEN`` and then the ``hf`` CLI's active token file. Used
+    only to *read* account facts (like organization names) during setup —
+    never stored or displayed.
+    """
+    env_token = os.environ.get("HF_TOKEN", "").strip()
+    if env_token:
+        return env_token
+    token_path = hf_home() / "token"
+    if token_path.is_file():
+        return token_path.read_text(encoding="utf-8").strip() or None
+    return None
+
+
 class _CaseSensitiveParser(configparser.ConfigParser):
     """ConfigParser that leaves option names (like ``hf_token``) untouched."""
 

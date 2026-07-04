@@ -2,7 +2,7 @@
 
 import stat
 
-from hf_auth_helper.store import hf_home, save_env, save_primary, save_profile
+from hf_auth_helper.store import find_existing_token, hf_home, save_env, save_primary, save_profile
 
 
 def mode_of(path):
@@ -17,6 +17,27 @@ def test_hf_home_honors_env(monkeypatch, tmp_path):
 def test_hf_home_defaults_to_cache(monkeypatch):
     monkeypatch.delenv("HF_HOME", raising=False)
     assert str(hf_home()).endswith(".cache/huggingface")
+
+
+def test_find_existing_token_prefers_env(monkeypatch, tmp_path):
+    monkeypatch.setenv("HF_TOKEN", "hf_from_env")
+    monkeypatch.setenv("HF_HOME", str(tmp_path))
+    assert find_existing_token() == "hf_from_env"
+
+
+def test_find_existing_token_reads_token_file(monkeypatch, tmp_path):
+    monkeypatch.delenv("HF_TOKEN", raising=False)
+    monkeypatch.setenv("HF_HOME", str(tmp_path))
+    (tmp_path / "token").write_text("hf_from_file\n")
+    assert find_existing_token() == "hf_from_file"
+
+
+def test_find_existing_token_handles_absence(monkeypatch, tmp_path):
+    monkeypatch.delenv("HF_TOKEN", raising=False)
+    monkeypatch.setenv("HF_HOME", str(tmp_path))
+    assert find_existing_token() is None
+    (tmp_path / "token").write_text("  \n")
+    assert find_existing_token() is None
 
 
 def test_save_profile_creates_ini(tmp_path):
