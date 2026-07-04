@@ -1,0 +1,81 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "hf-auth-helper"
+version = "0.1.0"
+description = "Set up safe, scoped Hugging Face authentication for agents: propose-only tokens, verification, and profiles."
+readme = "README.md"
+license = "MIT"
+authors = [{ name = "Onur Solmaz", email = "onur@solmaz.io" }]
+requires-python = ">=3.12"
+dependencies = []
+keywords = ["huggingface", "token", "agent", "security", "propose-only"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Security",
+]
+
+[project.urls]
+Repository = "https://github.com/osolmaz/hf-auth-helper"
+
+[project.scripts]
+hf-auth-helper = "hf_auth_helper.cli:main"
+
+[project.optional-dependencies]
+dev = [
+  "mutmut>=3.2",
+  "pytest>=8.0",
+  "pytest-cov>=5.0",
+  "ruff>=0.5",
+  "ty>=0.0.9",
+  "typeguard>=4.3",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/hf_auth_helper"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["A", "B", "C4", "C90", "E", "F", "I", "N", "ANN", "PL", "RUF", "SIM", "TID", "UP"]
+ignore = ["PLR2004"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 8
+
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = "all"
+
+[tool.ruff.lint.per-file-ignores]
+# Tests are exempt from annotation coverage by convention.
+"tests/**" = ["ANN"]
+
+# ty configured to the contract py.types-strict-required enforces.
+[tool.ty.terminal]
+error-on-warning = true
+
+[tool.ty.analysis]
+respect-type-ignore-comments = false
+
+[tool.ty.rules]
+missing-type-argument = "error"
+possibly-missing-attribute = "error"
+possibly-unresolved-reference = "error"
+possibly-missing-import = "error"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# typeguard verifies the annotations at runtime while the tests execute, so
+# a signature that lies about its types fails the suite.
+addopts = "--typeguard-packages=hf_auth_helper"
+
+[tool.mutmut]
+paths_to_mutate = ["src/hf_auth_helper/"]
+tests_dir = ["tests/"]
