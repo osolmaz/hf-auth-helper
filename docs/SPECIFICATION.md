@@ -93,6 +93,14 @@ deliberately: the tool's guarantee is "nothing irreversible," not
   write-capable scope is refused. Unknown scopes fail closed.
 - **Cancel means cancel.** Ctrl-c at any prompt aborts the entire setup
   with one line on stderr and exit code 130. Nothing is stored.
+- **The token value is secret everywhere.** It is read with hidden input
+  and is never echoed, logged, embedded in URLs or error messages, or
+  written anywhere except the storage destination the user chose. This is
+  a testable invariant: no output stream may ever contain the pasted
+  token value.
+- **Remote-first.** Assume the user is SSH'd into a remote box: the
+  browser is never launched without asking first, and the printed URL is
+  always the primary path.
 
 ## Interactive Flow
 
@@ -188,12 +196,28 @@ the token will and will not be able to do, e.g.:
 
 Then print the prefill URL (`https://huggingface.co/settings/tokens/new`
 with `tokenType=fineGrained` and the selected scopes as query
-parameters), open the browser unless `--no-browser`, and prompt for the
-token with hidden input.
+parameters). The URL is always printed prominently — it is the primary
+path, on the assumption that the user may be SSH'd into a remote box and
+will open the link on another device.
+
+The browser is never launched unprompted. After printing the URL, ask
+(in the style of `gh auth login`):
+
+> Open this page in a browser on this machine? (y/N)
+
+The default is **No** when remote indicators are present
+(`SSH_CONNECTION`/`SSH_TTY` set, or no display environment), **Yes**
+otherwise. `--no-browser` skips the question and never opens one.
+Whatever the answer, the flow continues to the hidden-input token
+prompt.
 
 ### Step 5 — Verification
 
-`GET /api/whoami-v2` with the pasted token:
+`GET /api/whoami-v2` with the pasted token. The response's
+`auth.accessToken.fineGrained` block is the token's actual grant list,
+per entity — no other API call is needed.
+
+Safety check (gate):
 
 - Role must be `fineGrained`.
 - Every granted permission (global and scoped) must be in
@@ -201,6 +225,23 @@ token with hidden input.
 - On refusal: name each violating permission and the role mismatch, store
   nothing, exit 1.
 - On network/auth errors: report, store nothing, exit 2.
+
+Scope mismatch report (informational, after the gate passes): compare the
+granted set against what the flow configured, per entity, in both
+directions:
+
+- **Extras** (granted but not selected) — necessarily safe, or the gate
+  would have refused. Reported as a note, e.g. "the token also has
+  `user.billing.read`, which you didn't select."
+- **Missing** (selected but not granted) — functional breakage, reported
+  as a warning before storing, e.g. "no access to org `dutifuldev` — you
+  selected it but the token doesn't include it", or "missing
+  `discussion.write`: this token cannot open pull requests." The token is
+  still stored (it is safe, just weaker than intended).
+
+The mismatch comparison applies only to `fineGrained` tokens; classic
+`read`/`write` tokens have no `fineGrained` block and never reach this
+step because the role check refuses them first.
 
 ### Step 6 — Storage
 
@@ -247,8 +288,11 @@ tool operations, the set of token values stored on disk never shrinks
 ## Non-Interactive Behavior
 
 When stdin or stdout is not a TTY, `agent login` runs without prompts and
-the recommended selection is used. Existing flags remain for scripting
-only — they select resources and destinations, never scopes:
+the recommended selection is used; the browser is never opened. With no
+destination flag, the token is stored as a named profile under its
+display name; on a collision with a different value, refuse with exit 2.
+Existing flags remain for scripting only — they select resources and
+destinations, never scopes:
 
 - `--org NAME` (repeatable), `--profile NAME` / `--primary` / `--env PATH`,
   `--url-only [--json]`, `--no-browser`.
