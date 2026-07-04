@@ -34,6 +34,46 @@ uvx hf-auth-helper agent login
   a stored profile/env entry), `agent list` (show stored agent profiles).
   If the concept is ever upstreamed, the native shape is `hf agent login`.
 
+## Rationale
+
+Agents that read untrusted content (web pages, issues, datasets) can be
+prompt-injected — the lethal trifecta: private data access + untrusted
+input + the ability to communicate out. A default `write` token turns one
+injection into deleted datasets, Spaces, and buckets. Client-side
+guardrails cannot fix this: a compromised agent uses the raw credential,
+not the wrapper around it. The only defense that holds is making the
+credential itself incapable of destruction, enforced by the platform.
+
+The Hub's permission model makes that expressible: opening a pull request
+requires no write access (PRs are commits on `refs/pr/N`, pushed directly
+to the target repo), while merging does. A token holding only reads plus
+`discussion.write` can therefore propose anything and finalize nothing —
+every change waits for a human merge. This was verified empirically
+against the live Hub on 2026-07-04: with such a token, PR-with-commit
+succeeds; merge, direct push to main, bucket file write, bucket delete,
+and bucket creation all return 403.
+
+## Threat Model
+
+**Protected against by default — destruction and unreviewed change.** The
+token cannot delete or overwrite anything: no merges, no pushes to
+branches, no repo/bucket/settings mutation, no bucket writes (bucket
+storage is non-versioned and unrecoverable, so bucket write access is
+never granted in any configuration). Everything the agent produces is a
+reviewable proposal. Residual nuisance capability: it can open, comment
+on, rename, and close *its own* PRs — noisy at worst, reversible, and it
+cannot touch anyone else's work.
+
+**Not protected against — data exfiltration.** The token can *read*
+everything in scope, including private repos and private buckets, and an
+injected agent with internet access can send what it reads anywhere.
+Nothing in this tool prevents that; scoping only shrinks the readable
+surface. Users with sensitive private data should customize down the
+optional reads, keep sensitive orgs out of the token's scope, or keep the
+agent's world in a sandbox namespace. This limitation is stated here
+deliberately: the tool's guarantee is "nothing irreversible," not
+"nothing leaks."
+
 ## Principles
 
 - **One recommended profile.** There is a single blessed scope selection
@@ -109,6 +149,29 @@ Step 1 = Yes is equivalent to answering Yes to every question above:
   `org.serviceAccounts.read`.
 
 This matches the field-tested token-form URL byte-for-byte.
+
+**Why each scope is in the default.** Every default except
+`discussion.write` is read-only, so none of them widen the destruction
+surface (which stays zero); what each one costs is readable — i.e.
+exfiltratable — surface, which is why each is individually declinable in
+the customize series.
+
+| Scope | Why default-on | What it exposes if the agent is hijacked |
+|-------|----------------|------------------------------------------|
+| `repo.content.read` | Core: the agent must read repos to work on them | Contents of private repos in scope |
+| `discussion.write` | Core: proposing changes is the point | PR/comment spam under your name (reversible) |
+| `canReadGatedRepos` | Agent workloads commonly run gated models (e.g. Llama) | Gated model weights the account can access |
+| `collection.read` | Cheap discovery aid for navigating your resources | Collection structure/metadata |
+| `repo.access.read` | Lets the agent check gated-repo request state | Requester names/emails on your gated repos |
+| `user.billing.read` | Lets the agent check usage/quota before heavy work | Billing/usage metadata |
+| `user.notifications.read` | Lets the agent notice review feedback on its PRs | Activity metadata across private repos |
+| `org.read` | Basic org visibility for org-scoped work | Org settings metadata |
+| `org.serviceAccounts.read` | Part of the field-tested selection; org tooling visibility | Service-account inventory — reconnaissance value; the first candidate to decline in stricter setups |
+
+The defaults reproduce the field-tested selection rather than the strict
+minimum because the recommended path optimizes for the agent working
+without friction; the customize series exists for users whose exfiltration
+surface matters more than convenience.
 
 ### Step 4 — Summary and token form
 
