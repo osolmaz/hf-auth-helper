@@ -35,4 +35,4 @@ CI runs the same gates; do not finish with any of them red.
 ## Slophammer
 
 Quality gates are enforced with Slophammer standards:
-https://raw.githubusercontent.com/dutifuldev/slophammer/refs/heads/main/docs/AGENT_ENTRYPOINT.md
+https://raw.githubusercontent.com/osolmaz/slophammer/refs/heads/main/docs/AGENT_ENTRYPOINT.md
